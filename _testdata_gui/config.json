@@ -1,0 +1,18 @@
+{
+  "name": "USER-20250124ZP",
+  "uid": "D835A69BDC45",
+  "tcp_port": 45640,
+  "udp_port": 45685,
+  "groups": [
+    {
+      "gid": "0B2204",
+      "gname": "冒烟测试群"
+    }
+  ],
+  "update_url": "https://raw.githubusercontent.com/ZZZ-need-sleep/Local_Network_Communication-created-by-DeepDeek-/main/update.wenyi",
+  "update_page": "https://mctier.pmhs.top/#preview",
+  "update_repo": "https://github.com/ZZZ-need-sleep/Local_Network_Communication-created-by-DeepDeek-.git",
+  "saved_files": [],
+  "rename_count": 0,
+  "rename_vote_need": 5
+}

@@ -1,0 +1,9 @@
+{
+  "uid": "UID-B",
+  "name": "BB",
+  "tcp_port": 45632,
+  "udp_port": 45679,
+  "groups": [],
+  "update_url": "http://127.0.0.1:1/none",
+  "update_page": ""
+}

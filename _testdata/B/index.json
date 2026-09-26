@@ -1,0 +1,26 @@
+{
+ "7c9a8505ad4189ad0720dc3fbd242889c8ddde6e4f59055a6b1e5731c361ecb7": {
+  "name": "你好.txt",
+  "size": 262160,
+  "ts": 1790433956.848875,
+  "src_uid": "UID-A",
+  "src_name": "AA",
+  "groups": [
+   "019010"
+  ],
+  "has_local": true,
+  "local_path": "E:\\APP\\DeepSeek-harness\\工作区\\mctire魔改\\_testdata\\B\\downloads\\qqq_019010\\你好.txt"
+ },
+ "9a078295ee136d09e9e6db5d03e0da1f911589edda3bd65fdba1c4455ca3a04b": {
+  "name": "离线文件.bin",
+  "size": 307200,
+  "ts": 1790433977.6253932,
+  "src_uid": "UID-A",
+  "src_name": "AA2",
+  "groups": [
+   "019010"
+  ],
+  "has_local": true,
+  "local_path": "E:\\APP\\DeepSeek-harness\\工作区\\mctire魔改\\_testdata\\B\\downloads\\qqq_019010\\离线文件.bin"
+ }
+}
