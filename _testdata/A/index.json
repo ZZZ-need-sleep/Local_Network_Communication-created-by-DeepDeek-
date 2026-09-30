@@ -1,23 +1,12 @@
 {
- "7c9a8505ad4189ad0720dc3fbd242889c8ddde6e4f59055a6b1e5731c361ecb7": {
+ "0161d32129f9f3dacca005a97796ee55ccc18cd02e73eacd29773ff8733661b5": {
   "name": "你好.txt",
   "size": 262160,
-  "ts": 1790433956.8377447,
+  "ts": 1790779856.9043868,
   "src_uid": "UID-A",
   "src_name": "AA",
   "groups": [
-   "019010"
-  ],
-  "has_local": true
- },
- "9a078295ee136d09e9e6db5d03e0da1f911589edda3bd65fdba1c4455ca3a04b": {
-  "name": "离线文件.bin",
-  "size": 307200,
-  "ts": 1790433971.5498016,
-  "src_uid": "UID-A",
-  "src_name": "AA2",
-  "groups": [
-   "019010"
+   "FF856B"
   ],
   "has_local": true
  }

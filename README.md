@@ -1,6 +1,6 @@
 我几乎将此项目的底裤翻给你看了（漏洞/功能等请将邮件发送至3814859587@qq.com）
 
-# MCTier 局域网群组（班群助手）
+# 内部网 局域网群组（班群助手）
 
 > 一句话介绍：**纯 Python 标准库**写的局域网群聊 + 群文件共享软件，零第三方依赖、复制即可运行，
 > 界面仿 Windows 11 微信 4.x 桌面版，专为同班 / 同小组电脑互传作业、通知、聊天设计。
@@ -17,7 +17,7 @@
 
 ### 1.1 项目简介
 
-MCTier 局域网群组（简称「班群助手」）是一个**纯 Python 标准库**实现的局域网群组软件：
+内部网 局域网群组（简称「班群助手」）是一个**纯 Python 标准库**实现的局域网群组软件：
 
 - **零第三方依赖**：只用 `socket / threading / tkinter / hashlib / hmac / json / urllib / subprocess` 等标准库，把文件夹复制过去就能跑；
 - **无需服务器**：没有中心服务端，所有电脑平等互联，谁先建群谁就是群主电脑，其他人凭群号加入；
@@ -36,7 +36,7 @@ MCTier 局域网群组（简称「班群助手」）是一个**纯 Python 标准
 | 防火墙 | 首次运行 Windows 会弹窗，必须点**允许**（至少勾选「专用网络」），否则别人看不到你 |
 | 权限 | 普通用户权限即可，**不需要管理员** |
 | 磁盘占用 | 程序本体 < 200 KB；聊天记录、文件缓存都在 `data/` 目录，按实际收发的文件大小增长 |
-| Git（可选） | **只有使用「克隆更新」功能时才需要**安装 Git，平时完全用不到 |
+| Git（可选） | **只有用 Git 方式更新时才需要**安装 Git；没装 Git 也可以用 ZIP 更新包（`update_package`）更新。更新由同目录的独立更新程序 `neiwang_update.py` 完成，平时完全用不到 |
 
 **各系统补充说明：**
 
@@ -59,14 +59,14 @@ MCTier 局域网群组（简称「班群助手」）是一个**纯 Python 标准
 | 离线文件回退 | 发送人关机也不怕：在公共日志里自动询问，其他下载过该文件的人自动提供 |
 | 改名投票 | 每个人自选名字，**第一次改名自由**，之后需超过 5 名用户投票同意 |
 | 公共日志 | 「日志」页：全网公共日志，所有人可见、**只读** |
-| 检查更新 | 联网时校验 `update.wenyi`，弹窗显示「新版本 ——（版本号）」与更新内容，可一键**克隆更新** |
+| 检查更新 | 启动时自动检查，无网络或版本相同则静默；有新版本才弹窗提醒「新版本 —— v版本号」与更新内容，并由同目录的独立更新程序 `neiwang_update.py` 完成更新 |
 | 系统通知 | 文件下载完成弹系统通知：`「qqq」群「AA」的「你好」下载完毕` |
 
 ### 1.4 快速开始
 
 1. 每台电脑安装 **Python 3.8+**（Windows 安装时记得勾选 *Add Python to PATH*）。
 2. 把整个文件夹复制到每台电脑（U 盘 / 网盘 / 共享文件夹都行，不需要放到同一路径）。
-3. Windows 双击 **`启动.bat`**；其他系统命令行运行 `python mctier_lan.py`。
+3. Windows 双击 **`启动.bat`**；其他系统命令行运行 `python neiwang.py`。
 4. **创建群**：点「＋ 创建群组」输入群名（如：高三（2）班），程序自动生成 **6 位群号**。
 5. **加群**：其他同学点「加入群组」→ 自动扫描局域网里发现的群 → 选中加入；也可以手动输入群号。
 6. **改名**：点左下角头像（或「设置」）→ 输入新名字。**第一次改名直接生效**；之后的修改会发起投票。
@@ -115,6 +115,10 @@ MCTier 局域网群组（简称「班群助手」）是一个**纯 Python 标准
 
 ### 1.8 版本与更新机制
 
+**更新是一个独立的程序**：主程序 `neiwang.py` 只负责「检查并提醒」，真正的更新由同目录的独立更新程序
+**`neiwang_update.py`** 完成（双击 `更新.bat`，或命令行 `python neiwang_update.py`）。
+它不需要先开主程序，主程序也只需要同目录有这个文件即可。
+
 **清单文件 `update.wenyi`**（放在程序目录，同时也放一份到 GitHub / 你的网站）：
 
 ```
@@ -124,10 +128,10 @@ MCTier 局域网群组（简称「班群助手」）是一个**纯 Python 标准
 ```
 
 - **第一行 = 版本号**，其余各行 = 本次更新内容（也可以写成 JSON：`{"version": "1.1.0", "notes": ["..."]}`）。
-- 程序启动时（联网状态下）自动请求 `update_url`（默认读取 GitHub 上的 `update.wenyi`）校验；
-  也可以在「设置 → 检查更新」手动触发。
 - 程序**自己的版本号也取自本机 `update.wenyi` 的第一行**——发布新版本时只改这一个文件即可。
-- 版本号相同 → **无任何反馈**；请求失败（没联网）→ **无任何反馈**；版本号不同 → 弹窗：
+- **主程序 `neiwang.py` 每次启动都会自动检查更新**，但只在真的有更新时才打扰你：
+  **无网络、或远程版本号与本地相同（或更旧）→ 完全静默、不弹任何窗口**；
+  只有发现**更新**（远程版本更高）时才弹窗：
 
 ```
 新版本 —— v1.1.1
@@ -138,30 +142,41 @@ MCTier 局域网群组（简称「班群助手」）是一个**纯 Python 标准
 
 （当前版本 v1.1.0）
 
-「是」立即克隆更新：程序自动把新版本克隆下来，
-你的所有会话内容会保存到 customer_god 文件夹并接着用；
-「否」打开更新页面手动下载；「取消」稍后再说。
+「是」启动独立更新程序立即更新；
+「否」打开更新发布页手动下载；「取消」稍后再说。
 ```
 
-**克隆更新（更新方式：克隆）** 分三步，全部自动完成：
+**独立更新程序 `neiwang_update.py` 的四种用法：**
+
+- `python neiwang_update.py`（或双击 `更新.bat`）：手动模式，一定会给出明确反馈
+  （已经是最新版本 / 无法连接更新服务器 / 发现新版本并弹窗）。
+- `python neiwang_update.py --auto`：自动模式，静默——只有发现新版本才弹窗。
+- `python neiwang_update.py --update`：不再询问，直接开始更新（主程序点「是」后就是这样调起它的）。
+- `python neiwang_update.py --check`：无界面检查，只打印一行结果
+  （`UPDATE_AVAILABLE 版本号` / `UP_TO_DATE 版本号` / `OFFLINE`）。
+
+**更新三步**（由独立更新程序完成，主程序不再做）：
 
 1. 把当前 `data/` 目录（**用户所有会话内容**：群组、聊天、文件索引、转存记录）完整备份到
    程序目录下的新文件夹 **`customer_god/`**；
-2. 用 `git clone`（浅克隆）把最新版本克隆到程序目录的 **`update_clone/`**；
-3. 把 `customer_god/` 里的会话内容**回填**到新版本的 `data/` 目录。
+2. 把新版本取到程序目录的 **`update_clone/`**：装了 Git 且配置了 `update_repo` 时用
+   `git clone --depth 1`（浅克隆）；否则**直接下载 ZIP 更新包并解压**——
+   不需要安装 Git，适合内网部署；
+3. 把 `customer_god/` 里的会话内容**回填**到 `update_clone/data/` 目录。
 
-完成后弹窗提示新版本路径，关闭旧程序、到新目录双击 `启动.bat` 即可，聊天和文件都不会丢。
-失败时会明确提示原因（例如没装 Git、仓库地址没配置、网络不通）。
+完成后提示新版本路径，并可一键打开新版本目录 / 启动新版本（`启动.bat`），聊天和文件都不会丢。
+失败时会明确说明原因（没装 Git 且没配置 `update_package`、仓库地址没配置、网络不通等）。
 
 **相关配置（`data/config.json`）**：
 
 | 字段 | 说明 |
 | --- | --- |
 | `update_url` | 更新清单地址（已默认指向本仓库 raw）：`https://raw.githubusercontent.com/ZZZ-need-sleep/Local_Network_Communication-created-by-DeepDeek-/main/update.wenyi` |
-| `update_page` | 「否」按钮打开的更新页（如你的 GitHub Releases 页面） |
-| `update_repo` | 克隆更新用的仓库地址：`https://github.com/ZZZ-need-sleep/Local_Network_Communication-created-by-DeepDeek-.git` |
+| `update_page` | 「否」按钮打开的更新发布页（已默认指向本仓库主页：`https://github.com/ZZZ-need-sleep/Local_Network_Communication-created-by-DeepDeek-`） |
+| `update_repo` | Git 方式更新用的仓库地址：`https://github.com/ZZZ-need-sleep/Local_Network_Communication-created-by-DeepDeek-.git` |
+| `update_package` | ZIP 更新包下载地址（例：`http://内网服务器/内部网.zip`）；在没装 Git 的内网环境用它更新 |
 
-> 提示：这两个地址已默认指向上面的仓库。若你的默认分支是 `master` 而不是 `main`，请把代码（或 `config.json`）里的 `main` 改成 `master`。
+> 提示：`update_url` / `update_repo` 这两个地址已默认指向上面的仓库。若你的默认分支是 `master` 而不是 `main`，请把代码（或 `config.json`）里的 `main` 改成 `master`。
 
 ### 1.9 数据目录
 
@@ -174,8 +189,8 @@ data/
 ├─ secret_relay.json    # 替别人暂存的离线私聊（密文 + 签名），送达后自动删除
 └─ secret_received.json # 已收到的转存编号（去重，避免重复显示）
 
-customer_god/           # 克隆更新时备份的「用户所有会话内容」
-update_clone/           # 克隆更新下来的新版本（含 data/）
+customer_god/           # 由独立更新程序 neiwang_update.py 备份的「用户所有会话内容」
+update_clone/           # 由独立更新程序 neiwang_update.py 取回的新版本（含 data/）
 update.wenyi            # 版本清单：版本号 + 更新内容
 ```
 
@@ -187,18 +202,18 @@ update.wenyi            # 版本清单：版本号 + 更新内容
 - **退出群组会删文件吗？** 不会，已下载文件保留在本机。
 - **改名改不了了？** 说明你已经改过一次，需要超过 5 位同学投票同意；人数不够时可以在 `config.json` 调低 `rename_vote_need`。
 - **私聊对方离线会丢消息吗？** 不会，会自动加密转存到在线同学处，对方上线后自动送达。
-- **克隆更新失败？** 检查是否装了 Git（`git --version`）、是否配置了 `update_repo`、网络能否访问 GitHub。
+- **更新失败怎么办？** 按取包方式排查：① 用 Git 方式的话，确认装了 Git（`git --version`）并配置了 `update_repo`；② 没装 Git 就在 `data/config.json` 里配置 `update_package`（ZIP 更新包的下载地址）；③ 以上都正常，再检查网络能否访问更新服务器 / 仓库。
 - **怎么干净退出？** 点窗口关闭按钮即可，所有状态自动保存。
 
 ### 1.11 开发与测试
 
 ```bash
 python test_protocol.py    # 无头协议测试：群聊、私聊、保密转存、文件下载、离线回退、改名投票
-python test_gui_smoke.py   # GUI 冒烟 + 更新检查 + 清单解析 + 克隆更新（备份/回填）测试
+python test_gui_smoke.py   # GUI 冒烟 + 更新检查 + 清单解析 + 独立更新程序的备份/回填/ZIP 更新测试
 ```
 
 - 测试会使用 `_testdata/`、`_testdata_gui/` 作为数据目录，不影响你的 `data/`；
-- 可用环境变量加速测试：`MCTIER_PRES_INTERVAL`、`MCTIER_PRES_TTL`、`MCTIER_VOTE_NEED`、`MCTIER_VOTE_WAIT`、`MCTIER_DATA_DIR`、`MCTIER_UPDATE_ROOT` 等。
+- 可用环境变量加速测试：`NEIWANG_PRES_INTERVAL`、`NEIWANG_PRES_TTL`、`NEIWANG_VOTE_NEED`、`NEIWANG_VOTE_WAIT`、`NEIWANG_DATA_DIR`、`NEIWANG_UPDATE_ROOT` 等。
 
 ### 1.12 联系方式
 
@@ -210,7 +225,7 @@ python test_gui_smoke.py   # GUI 冒烟 + 更新检查 + 清单解析 + 克隆�
 
 ### 2.1 專案簡介
 
-MCTier 區域網路群組（簡稱「班群助手」）是一套**純 Python 標準函式庫**實作的區域網路群組軟體：
+内部网 區域網路群組（簡稱「班群助手」）是一套**純 Python 標準函式庫**實作的區域網路群組軟體：
 
 - **零第三方相依**：只使用 `socket / threading / tkinter / hashlib / hmac / json / urllib / subprocess` 等標準函式庫，整個資料夾複製過去就能執行；
 - **不需要伺服器**：沒有中央伺服器，所有電腦平等互連，先建立群組的人就是群主電腦，其他人用群號加入；
@@ -229,7 +244,7 @@ MCTier 區域網路群組（簡稱「班群助手」）是一套**純 Python 標
 | 防火牆 | 首次執行 Windows 會跳窗，必須點**允許**（至少勾選「私人網路」），否則別人看不到你 |
 | 權限 | 一般使用者權限即可，**不需要系統管理員** |
 | 磁碟用量 | 程式本體 < 200 KB；聊天紀錄、檔案快取都在 `data/` 目錄，依實際收發的檔案大小成長 |
-| Git（選用） | **只有使用「複製更新」功能時才需要**安裝 Git，平時完全用不到 |
+| Git（選用） | **只有用 Git 方式更新時才需要**安裝 Git；沒安裝 Git 也可以用 ZIP 更新包（`update_package`）更新。更新由同目錄的獨立更新程式 `neiwang_update.py` 完成，平時完全用不到 |
 
 **各系統補充說明：**
 
@@ -252,14 +267,14 @@ MCTier 區域網路群組（簡稱「班群助手」）是一套**純 Python 標
 | 離線檔案回退 | 傳送者關機也不怕：在公共日誌中自動詢問，其他下載過該檔案的人自動提供 |
 | 改名投票 | 每人自選名字，**第一次改名自由**，之後需超過 5 名使用者投票同意 |
 | 公共日誌 | 「日誌」頁：全網公共日誌，所有人可見、**唯讀** |
-| 檢查更新 | 連網時校驗 `update.wenyi`，彈窗顯示「新版本 ——（版本號）」與更新內容，可一鍵**複製更新** |
+| 檢查更新 | 啟動時自動檢查，無網路或版本相同則靜默；有新版本才彈窗提醒「新版本 —— v版本號」與更新內容，並由同目錄的獨立更新程式 `neiwang_update.py` 完成更新 |
 | 系統通知 | 檔案下載完成彈系統通知：`「qqq」群「AA」的「你好」下載完畢` |
 
 ### 2.4 快速開始
 
 1. 每台電腦安裝 **Python 3.8+**（Windows 安裝時記得勾選 *Add Python to PATH*）。
 2. 把整個資料夾複製到每台電腦（USB 隨身碟 / 雲端硬碟 / 共用資料夾都可以，不需要放在相同路徑）。
-3. Windows 雙擊 **`啟動.bat`**；其他系統於命令列執行 `python mctier_lan.py`。
+3. Windows 雙擊 **`啟動.bat`**；其他系統於命令列執行 `python neiwang.py`。
 4. **建立群組**：點「＋ 建立群組」輸入群組名稱（例如：高三（2）班），程式自動產生 **6 位群號**。
 5. **加入群組**：其他同學點「加入群組」→ 自動掃描區域網路中發現的群組 → 選取加入；也可手動輸入群號。
 6. **改名**：點左下角頭像（或「設定」）→ 輸入新名字。**第一次改名直接生效**；之後的修改會發起投票。
@@ -308,6 +323,10 @@ MCTier 區域網路群組（簡稱「班群助手」）是一套**純 Python 標
 
 ### 2.8 版本與更新機制
 
+**更新是一個獨立的程式**：主程式 `neiwang.py` 只負責「檢查並提醒」，真正的更新由同目錄的獨立更新程式
+**`neiwang_update.py`** 完成（雙擊 `更新.bat`，或命令列 `python neiwang_update.py`）。
+它不需要先開主程式，主程式也只需要同目錄有這個檔案即可。
+
 **清單檔案 `update.wenyi`**（放在程式目錄，同時也放一份到 GitHub / 你的網站）：
 
 ```
@@ -317,10 +336,10 @@ MCTier 區域網路群組（簡稱「班群助手」）是一套**純 Python 標
 ```
 
 - **第一行 = 版本號**，其餘各行 = 本次更新內容（也可寫成 JSON：`{"version": "1.1.0", "notes": ["..."]}`）。
-- 程式啟動時（連網狀態下）自動請求 `update_url`（預設讀取 GitHub 上的 `update.wenyi`）校驗；
-  也可在「設定 → 檢查更新」手動觸發。
 - 程式**自己的版本號也取自本機 `update.wenyi` 的第一行**——發布新版本時只要改這一個檔案。
-- 版本號相同 → **無任何回應**；請求失敗（未連網）→ **無任何回應**；版本號不同 → 彈窗：
+- **主程式 `neiwang.py` 每次啟動都會自動檢查更新**，但只在真的有更新時才打擾你：
+  **無網路、或遠端版本號與本機相同（或更舊）→ 完全靜默、不彈任何視窗**；
+  只有發現**更新**（遠端版本較高）時才彈窗：
 
 ```
 新版本 —— v1.1.1
@@ -331,30 +350,41 @@ MCTier 區域網路群組（簡稱「班群助手」）是一套**純 Python 標
 
 （目前版本 v1.1.0）
 
-「是」立即複製更新：程式自動把新版本複製下來，
-你的所有會話內容會儲存到 customer_god 資料夾並繼續使用；
-「否」開啟更新頁面手動下載；「取消」稍後再說。
+「是」啟動獨立更新程式立即更新；
+「否」開啟更新發布頁手動下載；「取消」稍後再說。
 ```
 
-**複製更新（更新方式：複製 / clone）** 分三步，全部自動完成：
+**獨立更新程式 `neiwang_update.py` 的四種用法：**
+
+- `python neiwang_update.py`（或雙擊 `更新.bat`）：手動模式，一定會給出明確回饋
+  （已經是最新版本 / 無法連線更新伺服器 / 發現新版本並彈窗）。
+- `python neiwang_update.py --auto`：自動模式，靜默——只有發現新版本才彈窗。
+- `python neiwang_update.py --update`：不再詢問，直接開始更新（主程式點「是」後就是這樣叫起它）。
+- `python neiwang_update.py --check`：無介面檢查，只印出一行結果
+  （`UPDATE_AVAILABLE 版本號` / `UP_TO_DATE 版本號` / `OFFLINE`）。
+
+**更新三步**（由獨立更新程式完成，主程式不再做）：
 
 1. 把目前 `data/` 目錄（**使用者所有會話內容**：群組、聊天、檔案索引、轉存紀錄）完整備份到
    程式目錄下的新資料夾 **`customer_god/`**；
-2. 用 `git clone`（淺層複製）把最新版本複製到程式目錄的 **`update_clone/`**；
-3. 把 `customer_god/` 裡的會話內容**回填**到新版本的 `data/` 目錄。
+2. 把新版本取到程式目錄的 **`update_clone/`**：裝了 Git 且設定了 `update_repo` 時用
+   `git clone --depth 1`（淺層複製）；否則**直接下載 ZIP 更新包並解壓縮**——
+   不需要安裝 Git，適合內網部署；
+3. 把 `customer_god/` 裡的會話內容**回填**到 `update_clone/data/` 目錄。
 
-完成後彈窗提示新版本路徑，關閉舊程式、到新目錄雙擊 `啟動.bat` 即可，聊天和檔案都不會遺失。
-失敗時會明確提示原因（例如沒安裝 Git、倉庫位址沒設定、網路不通）。
+完成後提示新版本路徑，並可一鍵開啟新版本目錄 / 啟動新版本（`啟動.bat`），聊天和檔案都不會遺失。
+失敗時會明確說明原因（沒安裝 Git 且沒設定 `update_package`、倉庫位址沒設定、網路不通等）。
 
 **相關設定（`data/config.json`）**：
 
 | 欄位 | 說明 |
 | --- | --- |
 | `update_url` | 更新清單位址（已預設指向本儲存庫 raw）：`https://raw.githubusercontent.com/ZZZ-need-sleep/Local_Network_Communication-created-by-DeepDeek-/main/update.wenyi` |
-| `update_page` | 「否」按鈕開啟的更新頁（例如你的 GitHub Releases 頁面） |
-| `update_repo` | 複製更新用的儲存庫位址：`https://github.com/ZZZ-need-sleep/Local_Network_Communication-created-by-DeepDeek-.git` |
+| `update_page` | 「否」按鈕開啟的更新發布頁（已預設指向本儲存庫首頁：`https://github.com/ZZZ-need-sleep/Local_Network_Communication-created-by-DeepDeek-`） |
+| `update_repo` | Git 方式更新用的儲存庫位址：`https://github.com/ZZZ-need-sleep/Local_Network_Communication-created-by-DeepDeek-.git` |
+| `update_package` | ZIP 更新包下載位址（例：`http://內網伺服器/內部網.zip`）；在沒安裝 Git 的內網環境用它更新 |
 
-> 提示：這兩個位址已預設指向上面的儲存庫。若你的預設分支是 `master` 而不是 `main`，
+> 提示：`update_url` / `update_repo` 這兩個位址已預設指向上面的儲存庫。若你的預設分支是 `master` 而不是 `main`，
 > 請把程式碼（或 `config.json`）裡的 `main` 改成 `master`。
 
 ### 2.9 資料目錄
@@ -368,8 +398,8 @@ data/
 ├─ secret_relay.json    # 替別人暫存的離線私聊（密文 + 簽章），送達後自動刪除
 └─ secret_received.json # 已收到的轉存編號（去重，避免重複顯示）
 
-customer_god/           # 複製更新時備份的「使用者所有會話內容」
-update_clone/           # 複製更新下來的新版本（含 data/）
+customer_god/           # 由獨立更新程式 neiwang_update.py 備份的「使用者所有會話內容」
+update_clone/           # 由獨立更新程式 neiwang_update.py 取回的新版本（含 data/）
 update.wenyi            # 版本清單：版本號 + 更新內容
 ```
 
@@ -381,18 +411,18 @@ update.wenyi            # 版本清單：版本號 + 更新內容
 - **退出群組會刪檔案嗎？** 不會，已下載檔案保留在本機。
 - **改名改不了？** 表示你已經改過一次，需要超過 5 位同學投票同意；人數不足時可在 `config.json` 調低 `rename_vote_need`。
 - **私聊對方離線會丟訊息嗎？** 不會，會自動加密轉存到在線同學處，對方上線後自動送達。
-- **複製更新失敗？** 檢查是否安裝 Git（`git --version`）、是否設定了 `update_repo`、網路能否存取 GitHub。
+- **更新失敗怎麼辦？** 依取包方式排查：① 用 Git 方式的話，確認安裝了 Git（`git --version`）並設定了 `update_repo`；② 沒安裝 Git 就在 `data/config.json` 裡設定 `update_package`（ZIP 更新包的下載位址）；③ 以上都正常，再檢查網路能否連上更新伺服器 / 儲存庫。
 - **怎麼乾淨結束？** 點視窗關閉按鈕即可，所有狀態自動儲存。
 
 ### 2.11 開發與測試
 
 ```bash
 python test_protocol.py    # 無頭協定測試：群聊、私聊、保密轉存、檔案下載、離線回退、改名投票
-python test_gui_smoke.py   # GUI 冒煙 + 更新檢查 + 清單解析 + 複製更新（備份/回填）測試
+python test_gui_smoke.py   # GUI 冒煙 + 更新檢查 + 清單解析 + 獨立更新程式的備份/回填/ZIP 更新測試
 ```
 
 - 測試會使用 `_testdata/`、`_testdata_gui/` 作為資料目錄，不影響你的 `data/`；
-- 可用環境變數加速測試：`MCTIER_PRES_INTERVAL`、`MCTIER_PRES_TTL`、`MCTIER_VOTE_NEED`、`MCTIER_VOTE_WAIT`、`MCTIER_DATA_DIR`、`MCTIER_UPDATE_ROOT` 等。
+- 可用環境變數加速測試：`NEIWANG_PRES_INTERVAL`、`NEIWANG_PRES_TTL`、`NEIWANG_VOTE_NEED`、`NEIWANG_VOTE_WAIT`、`NEIWANG_DATA_DIR`、`NEIWANG_UPDATE_ROOT` 等。
 
 ### 2.12 聯絡方式
 
@@ -404,7 +434,7 @@ python test_gui_smoke.py   # GUI 冒煙 + 更新檢查 + 清單解析 + 複製�
 
 ### 3.1 О проекте
 
-MCTier LAN Group («помощник для класса») — программа для группового общения и обмена файлами
+内部网 LAN Group («помощник для класса») — программа для группового общения и обмена файлами
 в локальной сети, написанная **только на стандартной библиотеке Python**.
 
 - **Без сторонних зависимостей**: используются лишь `socket / threading / tkinter / hashlib / hmac / json / urllib / subprocess` — достаточно скопировать папку и запустить.
@@ -424,7 +454,7 @@ MCTier LAN Group («помощник для класса») — программ
 | Брандмауэр | при первом запуске Windows появится запрос — нажмите **«Разрешить»** (хотя бы для частных сетей), иначе вас не увидят |
 | Права | достаточно обычного пользователя, **администратор не нужен** |
 | Диск | сама программа < 200 КБ; история и кэш файлов — в папке `data/` |
-| Git (необязательно) | нужен **только** для функции «обновление клонированием» |
+| Git (необязательно) | нужен **только** при обновлении через Git; без Git можно обновляться ZIP-пакетом (`update_package`). Обновление выполняет отдельная программа `neiwang_update.py` из той же папки |
 
 **Особенности платформ:**
 
@@ -447,14 +477,14 @@ MCTier LAN Group («помощник для класса») — программ
 | Резервный источник файлов | Если отправитель выключил компьютер, программа публично спрашивает в журнале — тот, у кого файл уже есть, отдаёт его |
 | Голосование за смену имени | Имя выбирается свободно; **первая смена — бесплатно**, дальше нужно больше 5 голосов «за» |
 | Общий журнал | Вкладка «Журнал»: общий журнал локальной сети, виден всем, **только для чтения** |
-| Проверка обновлений | При наличии сети проверяется `update.wenyi`, окно показывает «Новая версия — (номер)» и список изменений, можно обновиться клонированием |
+| Проверка обновлений | Проверяется автоматически при запуске; без сети или при той же версии — молча; окно появляется только при новой версии («Новая версия — v…» и список изменений), а само обновление выполняет отдельная программа `neiwang_update.py` из той же папки |
 | Системные уведомления | По завершении загрузки файла: `«qqq»群「AA」的「你好」下载完毕` |
 
 ### 3.4 Быстрый старт
 
 1. Установите **Python 3.8+** на каждый компьютер (в Windows отметьте *Add Python to PATH*).
 2. Скопируйте всю папку на каждый компьютер (USB-флешка, облако, общая папка — путь может быть любым).
-3. В Windows запустите **`启动.bat`**; в других системах — `python mctier_lan.py` в терминале.
+3. В Windows запустите **`启动.bat`**; в других системах — `python neiwang.py` в терминале.
 4. **Создать группу**: «＋ 创建群组» → введите название (например, «10-А класс») → программа создаст **6-значный номер группы**.
 5. **Войти в группу**: «加入群组» → автоматический поиск групп в сети → выберите и войдите; либо введите номер вручную.
 6. **Сменить имя**: аватар в левом нижнем углу (или «设置») → введите новое имя. **Первая смена применяется сразу**, дальше — голосование.
@@ -503,6 +533,12 @@ MCTier LAN Group («помощник для класса») — программ
 
 ### 3.8 Версии и обновление
 
+**Обновление — это отдельная программа**: основная программа `neiwang.py` только проверяет наличие новой
+версии и показывает окно, а само обновление выполняет лежащая в той же папке отдельная программа
+**`neiwang_update.py`** (двойной щелчок по `更新.bat` или команда `python neiwang_update.py` в терминале).
+Ей не нужно, чтобы основная программа была запущена; основной программе достаточно, чтобы этот файл
+лежал в той же папке.
+
 **Файл-манифест `update.wenyi`** (лежит рядом с программой; копия публикуется на GitHub / вашем сайте):
 
 ```
@@ -512,10 +548,10 @@ MCTier LAN Group («помощник для класса») — программ
 ```
 
 - **Первая строка — номер версии**, остальные строки — список изменений (можно и в формате JSON: `{"version": "1.1.0", "notes": ["..."]}`).
-- При запуске (если есть сеть) программа запрашивает `update_url` (по умолчанию читает `update.wenyi` с GitHub);
-  проверить можно и вручную: «设置 → 检查更新».
 - **Версия самой программы тоже берётся из первой строки локального `update.wenyi`** — при выпуске новой версии правится один файл.
-- Версия совпадает → **никаких сообщений**; нет сети → **никаких сообщений**; версия отличается → окно:
+- **Основная программа `neiwang.py` проверяет обновления при каждом запуске**, но беспокоит вас только тогда,
+  когда обновление действительно есть: **нет сети или удалённая версия совпадает с локальной (или старее)
+  → полная тишина, никаких окон**; окно появляется только при **обновлении** (удалённая версия новее):
 
 ```
 新版本 —— v1.1.1
@@ -526,31 +562,44 @@ MCTier LAN Group («помощник для класса») — программ
 
 （当前版本 v1.1.0）
 
-«是» — обновить клонированием: программа сама скачает новую версию,
-все ваши данные переписки сохранятся в папке customer_god и будут перенесены;
-«否» — открыть страницу загрузки; «取消» — позже.
+«是» — запустить отдельную программу обновления и обновиться сразу: она скачает новую версию,
+все ваши данные переписки сохранятся (папка customer_god) и будут перенесены;
+«否» — открыть страницу публикации; «取消» — позже.
 ```
 
-**Обновление клонированием** выполняется в три шага, полностью автоматически:
+**Четыре режима отдельной программы `neiwang_update.py`:**
+
+- `python neiwang_update.py` (или двойной щелчок по `更新.bat`) — ручной режим, всегда даёт понятный ответ
+  (уже последняя версия / не удалось подключиться к серверу обновлений / найдена новая версия и показано окно).
+- `python neiwang_update.py --auto` — автоматический режим, молча: окно только при наличии новой версии.
+- `python neiwang_update.py --update` — без вопросов сразу начинает обновление (именно так вызывает её
+  основная программа при нажатии «是»).
+- `python neiwang_update.py --check` — проверка без интерфейса, печатает одну строку:
+  `UPDATE_AVAILABLE версия` / `UP_TO_DATE версия` / `OFFLINE`.
+
+**Три шага обновления** (их выполняет отдельная программа обновления, основная программа этого больше не делает):
 
 1. текущая папка `data/` (**все данные пользователя**: группы, переписка, индекс файлов, хранилище)
    целиком копируется в новую папку **`customer_god/`** рядом с программой;
-2. последняя версия клонируется командой `git clone` (неглубоко) в папку **`update_clone/`**;
-3. содержимое `customer_god/` **возвращается** в папку `data/` новой версии.
+2. новая версия помещается в папку **`update_clone/`**: если установлен Git и задан `update_repo`,
+   используется `git clone --depth 1` (неглубокое клонирование); иначе **ZIP-пакет обновления просто
+   скачивается и распаковывается** — устанавливать Git не нужно, это удобно для локальной сети;
+3. содержимое `customer_god/` **возвращается** в папку `update_clone/data/` новой версии.
 
-После этого появляется окно с путём новой версии: закройте старую программу, зайдите в новую папку
-и запустите `启动.bat` — переписка и файлы сохранятся. При ошибке будет указана причина
-(нет Git, не задан адрес репозитория, нет доступа к сети).
+После этого показывается путь к новой версии: можно одной кнопкой открыть папку новой версии или
+запустить её (`启动.bat`) — переписка и файлы сохранятся. При ошибке будет указана причина
+(нет Git и не задан `update_package`, не задан адрес репозитория, нет доступа к сети и т. п.).
 
 **Настройки (`data/config.json`)**:
 
 | Поле | Назначение |
 | --- | --- |
 | `update_url` | Адрес манифеста (уже указывает на raw этого репозитория): `https://raw.githubusercontent.com/ZZZ-need-sleep/Local_Network_Communication-created-by-DeepDeek-/main/update.wenyi` |
-| `update_page` | Страница загрузки для кнопки «否» (например, страница GitHub Releases) |
-| `update_repo` | Адрес репозитория для клонирования: `https://github.com/ZZZ-need-sleep/Local_Network_Communication-created-by-DeepDeek-.git` |
+| `update_page` | Страница публикации для кнопки «否» (уже указывает на главную страницу этого репозитория: `https://github.com/ZZZ-need-sleep/Local_Network_Communication-created-by-DeepDeek-`) |
+| `update_repo` | Адрес репозитория для обновления через Git: `https://github.com/ZZZ-need-sleep/Local_Network_Communication-created-by-DeepDeek-.git` |
+| `update_package` | Адрес ZIP-пакета обновления (например, `http://сервер-в-локальной-сети/内部网.zip`); нужен там, где не установлен Git |
 
-> Примечание: эти адреса уже указывают на репозиторий выше. Если ваша ветка по умолчанию — `master`,
+> Примечание: адреса `update_url` и `update_repo` уже указывают на репозиторий выше. Если ваша ветка по умолчанию — `master`,
 > а не `main`, замените `main` в коде (или в `config.json`) на `master`.
 
 ### 3.9 Каталоги данных
@@ -564,8 +613,8 @@ data/
 ├─ secret_relay.json    # чужие офлайн-сообщения (шифротекст + подпись), удаляются после доставки
 └─ secret_received.json # номера уже полученных пересылок (защита от повторов)
 
-customer_god/           # резервная копия «всех данных пользователя» при обновлении
-update_clone/           # новая версия, полученная клонированием (вместе с data/)
+customer_god/           # резервная копия «всех данных пользователя», создаётся программой neiwang_update.py
+update_clone/           # новая версия, полученная программой neiwang_update.py (вместе с data/)
 update.wenyi            # манифест: номер версии + список изменений
 ```
 
@@ -577,18 +626,18 @@ update.wenyi            # манифест: номер версии + списо
 - **Удаляются ли файлы при выходе из группы?** Нет, скачанные файлы остаются на компьютере.
 - **Имя не меняется?** Значит, вы уже меняли его один раз — нужно больше 5 голосов «за»; при малом числе участников уменьшите `rename_vote_need` в `config.json`.
 - **Потеряется ли личное сообщение, если получатель не в сети?** Нет — оно шифруется и хранится у участника в сети, а затем доставляется автоматически.
-- **Обновление клонированием не работает?** Проверьте наличие Git (`git --version`), поле `update_repo` и доступ к GitHub.
+- **Обновление не сработало?** Смотрите причину, которую выдала программа: ① при обновлении через Git — установлен ли Git (`git --version`) и задано ли поле `update_repo`; ② если Git не установлен — задайте в `data/config.json` адрес ZIP-пакета `update_package`; ③ если всё в порядке — проверьте доступ к серверу обновлений / репозиторию.
 - **Как корректно закрыть программу?** Просто закройте окно — всё сохраняется автоматически.
 
 ### 3.11 Разработка и тесты
 
 ```bash
 python test_protocol.py    # тесты протокола: чат, личные сообщения, секретная пересылка, файлы, офлайн-поиск, голосование
-python test_gui_smoke.py   # дымовые тесты GUI, проверка обновлений, разбор манифеста, клонирование (резерв/возврат)
+python test_gui_smoke.py   # дымовые тесты GUI, проверка обновлений, разбор манифеста, отдельная программа обновления (резерв/возврат/ZIP)
 ```
 
 - Тесты используют каталоги `_testdata/` и `_testdata_gui/` и не трогают вашу папку `data/`;
-- Для ускорения тестов есть переменные окружения: `MCTIER_PRES_INTERVAL`, `MCTIER_PRES_TTL`, `MCTIER_VOTE_NEED`, `MCTIER_VOTE_WAIT`, `MCTIER_DATA_DIR`, `MCTIER_UPDATE_ROOT`.
+- Для ускорения тестов есть переменные окружения: `NEIWANG_PRES_INTERVAL`, `NEIWANG_PRES_TTL`, `NEIWANG_VOTE_NEED`, `NEIWANG_VOTE_WAIT`, `NEIWANG_DATA_DIR`, `NEIWANG_UPDATE_ROOT`.
 
 ### 3.12 Контакты
 
@@ -600,7 +649,7 @@ python test_gui_smoke.py   # дымовые тесты GUI, проверка о�
 
 ### 4.1 About the project
 
-MCTier LAN Group ("Class Group Helper") is a LAN chat + group file-sharing application written in
+内部网 LAN Group ("Class Group Helper") is a LAN chat + group file-sharing application written in
 **pure Python standard library** — no third-party dependencies, just copy the folder and run.
 
 - **Zero dependencies**: only `socket / threading / tkinter / hashlib / hmac / json / urllib / subprocess` are used.
@@ -620,7 +669,7 @@ MCTier LAN Group ("Class Group Helper") is a LAN chat + group file-sharing appli
 | Firewall | On first run Windows asks for permission — click **Allow** (at least for private networks), otherwise nobody can see you |
 | Privileges | A normal user account is enough; **no administrator rights** required |
 | Disk usage | The program itself is < 200 KB; chat history and file cache live in `data/` and grow with your files |
-| Git (optional) | Needed **only** for the "clone update" feature |
+| Git (optional) | Needed **only** when updating via Git; without Git you can update from a ZIP package (`update_package`). Updates are performed by the separate updater `neiwang_update.py` in the same folder |
 
 **Platform notes:**
 
@@ -643,14 +692,14 @@ MCTier LAN Group ("Class Group Helper") is a LAN chat + group file-sharing appli
 | Offline file fallback | If the sender is offline, the app asks publicly in the log and any peer that already has the file serves it automatically |
 | Rename voting | Free choice of name; the **first rename is free**, later ones need more than 5 approving votes |
 | Public log | A read-only, network-wide public log visible to everyone |
-| Update check | Checks `update.wenyi` when online, shows "New version — (number)" plus the changelog, and can update by cloning |
+| Update check | Checked automatically at startup; silent when there is no network or the version is unchanged; a dialog appears only for a new version ("New version — v…" plus the changelog), and the update itself is performed by the separate updater `neiwang_update.py` in the same folder |
 | System notifications | On download completion: `「qqq」群「AA」的「你好」下载完毕` |
 
 ### 4.4 Quick start
 
 1. Install **Python 3.8+** on every computer (on Windows tick *Add Python to PATH*).
 2. Copy the whole folder to each computer (USB drive, cloud drive or shared folder — the path may differ).
-3. On Windows double-click **`启动.bat`**; elsewhere run `python mctier_lan.py`.
+3. On Windows double-click **`启动.bat`**; elsewhere run `python neiwang.py`.
 4. **Create a group**: "＋ 创建群组", enter a name (e.g. *Class 3-2*); a **6-character group ID** is generated.
 5. **Join a group**: "加入群组" scans the LAN for discovered groups — select one, or type the group ID manually.
 6. **Rename yourself**: click the avatar at the bottom-left (or "设置") and type a new name. **The first rename applies instantly**; later ones start a vote.
@@ -700,6 +749,11 @@ MCTier LAN Group ("Class Group Helper") is a LAN chat + group file-sharing appli
 
 ### 4.8 Versioning and updates
 
+**Updating is a separate program**: the main program `neiwang.py` only checks and shows a dialog, while the
+actual update is performed by the separate updater **`neiwang_update.py`** in the same folder
+(double-click `更新.bat`, or run `python neiwang_update.py` on the command line). It does not need the main
+program to be running, and the main program only needs this file to exist in the same folder.
+
 **Manifest file `update.wenyi`** (shipped next to the program; a copy is published on GitHub / your website):
 
 ```
@@ -710,11 +764,11 @@ MCTier LAN Group ("Class Group Helper") is a LAN chat + group file-sharing appli
 
 - **Line 1 is the version number**; the remaining lines are the changelog (JSON is also supported:
   `{"version": "1.1.0", "notes": ["..."]}`).
-- On startup (when online) the app fetches `update_url` (by default reads `update.wenyi` from GitHub);
-  you can also trigger it manually via "设置 → 检查更新".
 - **The app's own version also comes from line 1 of the local `update.wenyi`** — releasing a new version means
   editing just this one file.
-- Same version → **silent**; request failed (offline) → **silent**; different version → dialog:
+- **The main program `neiwang.py` checks for updates on every startup**, but it only bothers you when an update
+  really exists: **no network, or a remote version equal to (or older than) the local one → completely silent,
+  no window at all**; a dialog appears only for an **update** (remote version is newer):
 
 ```
 新版本 —— v1.1.1
@@ -725,31 +779,44 @@ MCTier LAN Group ("Class Group Helper") is a LAN chat + group file-sharing appli
 
 （当前版本 v1.1.0）
 
-"Yes" — update by cloning: the new version is cloned automatically and
+"Yes" — launch the separate updater and update immediately: it fetches the new version and
 all your session data is saved into the customer_god folder and carried over;
-"No" — open the download page; "Cancel" — later.
+"No" — open the release page; "Cancel" — later.
 ```
 
-**Clone update** runs in three automatic steps:
+**The four modes of the separate updater `neiwang_update.py`:**
+
+- `python neiwang_update.py` (or double-click `更新.bat`): manual mode — always gives a clear answer
+  (already up to date / cannot reach the update server / a new version was found and a dialog is shown).
+- `python neiwang_update.py --auto`: automatic mode, silent — a dialog appears only when a new version exists.
+- `python neiwang_update.py --update`: no questions asked, starts updating immediately (this is how the main
+  program invokes it when you click "Yes").
+- `python neiwang_update.py --check`: headless check that prints exactly one line:
+  `UPDATE_AVAILABLE <version>` / `UP_TO_DATE <version>` / `OFFLINE`.
+
+**The three update steps** (performed by the separate updater; the main program no longer does this):
 
 1. the current `data/` folder (**all of the user's session content**: groups, chats, file index, relay store)
    is backed up into a new folder **`customer_god/`** next to the program;
-2. the latest version is fetched with a shallow `git clone` into **`update_clone/`**;
-3. the content of `customer_god/` is **restored** into the new version's `data/` folder.
+2. the new version is fetched into **`update_clone/`**: when Git is installed and `update_repo` is configured,
+   a shallow `git clone --depth 1` is used; otherwise the **ZIP update package is downloaded and unpacked
+   directly** — no Git installation required, which suits intranet deployments;
+3. the content of `customer_god/` is **restored** into the new version's `update_clone/data/` folder.
 
-A dialog then shows the new path: close the old program, open the new folder and run `启动.bat` —
-your chats and files are intact. Failures report a concrete reason (Git missing, repository not configured,
-network unreachable).
+The path of the new version is then shown, with one-click options to open the new version's folder or start it
+(`启动.bat`) — your chats and files are intact. Failures report a concrete reason (Git missing and
+`update_package` not configured, repository not configured, network unreachable, and so on).
 
 **Settings (`data/config.json`)**:
 
 | Field | Meaning |
 | --- | --- |
 | `update_url` | Manifest URL (already points to this repository's raw): `https://raw.githubusercontent.com/ZZZ-need-sleep/Local_Network_Communication-created-by-DeepDeek-/main/update.wenyi` |
-| `update_page` | Page opened by the "No" button (e.g. your GitHub Releases page) |
-| `update_repo` | Repository used for the clone update: `https://github.com/ZZZ-need-sleep/Local_Network_Communication-created-by-DeepDeek-.git` |
+| `update_page` | Release page opened by the "No" button (already points to this repository's home page: `https://github.com/ZZZ-need-sleep/Local_Network_Communication-created-by-DeepDeek-`) |
+| `update_repo` | Repository used for Git-based updates: `https://github.com/ZZZ-need-sleep/Local_Network_Communication-created-by-DeepDeek-.git` |
+| `update_package` | URL of the ZIP update package (e.g. `http://intranet-server/内部网.zip`); used for updates in intranet environments without Git |
 
-> Note: these URLs already point to the repository above. If your default branch is `master` rather
+> Note: `update_url` and `update_repo` already point to the repository above. If your default branch is `master` rather
 > than `main`, change `main` in the code (or in `config.json`) to `master`.
 
 ### 4.9 Data directories
@@ -763,8 +830,8 @@ data/
 ├─ secret_relay.json    # offline private messages relayed for others (ciphertext + signature), deleted after delivery
 └─ secret_received.json # IDs of relays already received (deduplication)
 
-customer_god/           # backup of "all user session content" made during a clone update
-update_clone/           # the cloned new version (including its own data/)
+customer_god/           # backup of "all user session content" created by the updater neiwang_update.py
+update_clone/           # the new version fetched by the updater neiwang_update.py (including its own data/)
 update.wenyi            # version manifest: version number + changelog
 ```
 
@@ -780,20 +847,19 @@ update.wenyi            # version manifest: version number + changelog
   members, lower `rename_vote_need` in `config.json`.
 - **Are private messages lost when the recipient is offline?** No — they are encrypted and parked on an online
   peer, then delivered automatically once the recipient appears.
-- **Clone update fails?** Check that Git is installed (`git --version`), that `update_repo` is configured and
-  that GitHub is reachable.
+- **Update failed?** Follow the reason the program prints: ① for Git-based updates, check that Git is installed (`git --version`) and that `update_repo` is configured; ② if Git is not installed, set `update_package` (the ZIP update package URL) in `data/config.json`; ③ if all of that is fine, check that the update server / repository is reachable.
 - **How do I quit cleanly?** Just close the window — all state is saved automatically.
 
 ### 4.11 Development and tests
 
 ```bash
 python test_protocol.py    # headless protocol tests: group chat, private chat, secret relay, file download, offline fallback, rename voting
-python test_gui_smoke.py   # GUI smoke tests + update check + manifest parsing + clone update (backup/restore)
+python test_gui_smoke.py   # GUI smoke tests + update check + manifest parsing + the separate updater (backup/restore/ZIP update)
 ```
 
 - Tests use `_testdata/` and `_testdata_gui/` as data directories and never touch your `data/`;
-- Environment variables for faster tests: `MCTIER_PRES_INTERVAL`, `MCTIER_PRES_TTL`, `MCTIER_VOTE_NEED`,
-  `MCTIER_VOTE_WAIT`, `MCTIER_DATA_DIR`, `MCTIER_UPDATE_ROOT`.
+- Environment variables for faster tests: `NEIWANG_PRES_INTERVAL`, `NEIWANG_PRES_TTL`, `NEIWANG_VOTE_NEED`,
+  `NEIWANG_VOTE_WAIT`, `NEIWANG_DATA_DIR`, `NEIWANG_UPDATE_ROOT`.
 
 ### 4.12 Contact
 

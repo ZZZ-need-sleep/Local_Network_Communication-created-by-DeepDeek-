@@ -1,9 +1,15 @@
 {
-  "uid": "UID-B",
-  "name": "BB",
-  "tcp_port": 45632,
+  "uid": "UID-A",
+  "name": "AAA改",
+  "tcp_port": 45631,
   "udp_port": 45679,
-  "groups": [],
+  "groups": [
+    {
+      "gid": "FF856B",
+      "gname": "qqq"
+    }
+  ],
   "update_url": "http://127.0.0.1:1/none",
-  "update_page": ""
+  "update_page": "",
+  "rename_count": 1
 }

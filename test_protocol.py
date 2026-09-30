@@ -22,15 +22,15 @@ import time
 from pathlib import Path
 
 # 测试加速：缩短心跳/在线判定/询问等待
-os.environ["MCTIER_PRES_INTERVAL"] = "1"
-os.environ["MCTIER_PRES_TTL"] = "3"
-os.environ["MCTIER_OFFER_WAIT"] = "6"
-os.environ["MCTIER_UDP_PORT"] = "45679"
-os.environ["MCTIER_TCP_PORT"] = "45631"
-os.environ["MCTIER_VOTE_NEED"] = "1"    # 测试环境：同意票超过 1 票（即 2 票）即通过
-os.environ["MCTIER_VOTE_WAIT"] = "8"    # 投票等待 8 秒（超时未过则失败）
+os.environ["NEIWANG_PRES_INTERVAL"] = "1"
+os.environ["NEIWANG_PRES_TTL"] = "3"
+os.environ["NEIWANG_OFFER_WAIT"] = "6"
+os.environ["NEIWANG_UDP_PORT"] = "45679"
+os.environ["NEIWANG_TCP_PORT"] = "45631"
+os.environ["NEIWANG_VOTE_NEED"] = "1"    # 测试环境：同意票超过 1 票（即 2 票）即通过
+os.environ["NEIWANG_VOTE_WAIT"] = "8"    # 投票等待 8 秒（超时未过则失败）
 
-import mctier_lan as M
+import neiwang as M
 
 BASE = Path(__file__).resolve().parent / "_testdata"
 import shutil
@@ -100,7 +100,7 @@ def fid_of(core, name):
 
 
 print("=" * 70)
-print("MCTier LAN 无头协议测试（4 台模拟电脑）")
+print("内部网 LAN 无头协议测试（4 台模拟电脑）")
 print("=" * 70)
 
 # ---------------- 机器 A：创建群组，发送文字与文件 ----------------
