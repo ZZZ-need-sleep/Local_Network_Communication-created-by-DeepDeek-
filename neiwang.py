@@ -5,22 +5,28 @@
 纯 Python 标准库实现的局域网（校园网/班级局域网）群组聊天 + 群文件共享软件。
 
 功能对照需求：
-  1. 发送文字（群组聊天、广播，同组成员可见）
-  2. 双人私聊：点成员头像快速私聊；对方离线时自动加密转存到某位在线同学，
+  1. 内网准入（新）：局域网里的电脑先组成一个「内网」，登记每台电脑的物理地址（MAC）。
+     启动时自动组网：已在内网 -> 广播；否则扫描附近内网 -> 扫描到就申请加入，没扫描到就自行建立。
+     没被接纳的电脑程序是空的（群组 / 聊天 / 文件都用不了），内网外机器发来的消息一律忽略。
+  2. 入网投票（新）：内网 ≤5 人免投票自动通过；6–7 人需全票通过；≥8 人需超过 1/3 同意。
+     投票统一收在左侧「投票」图标（有待投票才有小红点，鼠标靠近才弹面板），可同意/拒绝/弃权，
+     投出后 5 分钟内可改票，一次投票有效期 1 天，历史在「更多」页；没有「自动同意」，必须人点。
+  3. 发送文字（群组聊天、广播，同组成员可见）
+  4. 双人私聊：点成员头像快速私聊；对方离线时自动加密转存到某位在线同学，
      待对方上线自动送达，送达后校验完整性并删除转存（转存方全程无感、无法查看）
-  3. 文件功能：向群组发送文件；检测到已加入群组的新文件 -> 自动下载
-  4. 联网检查更新：每次启动自动检查；未联网 / 版本号相同或更旧 -> 无任何反馈；
+  5. 文件功能：向群组发送文件；检测到已加入群组的新文件 -> 自动下载
+  6. 联网检查更新：每次启动自动检查；未联网 / 版本号相同或更旧 -> 无任何反馈；
      仅当远程版本更新 -> 弹窗提醒，实际更新由同目录下的独立程序 neiwang_update.py 完成
-  5. 局域网内设置群组（班级 / 小组），可加入多个群组，也可退出某个群组
-  6. 每个用户在群组内显示自己的名字：第一次改名自由，之后的修改需超过 5 名用户
+  7. 局域网内设置群组（班级 / 小组），可加入多个群组，也可退出某个群组
+  8. 每个用户在群组内显示自己的名字：第一次改名自由，之后的修改需超过 5 名用户
      投票同意（其他电脑收到投票弹窗，同意票足够后名字自动更新）
-  7. 文件分发策略（按你的要求）：
+  9. 文件分发策略（按你的要求）：
        - 校验发送人是否存在（在线）-> 存在则向发送人点对点下载
        - 发送人不在线 -> 在「日志」里公共询问（全网可见，所有人可看不可操作），
          其他下载过该文件的用户返回自己的局域网 IP（没下载过的无应答），
          向第一个返回的 IP 自动请求文件（全程无需两端用户操作）
-  8. 下载完成后调用系统 API 弹通知：「qqq」群「AA」的「你好」下载完毕
-  9. 所有文件打开时自动用系统默认应用程序打开
+ 10. 下载完成后调用系统 API 弹通知：「qqq」群「AA」的「你好」下载完毕
+ 11. 所有文件打开时自动用系统默认应用程序打开
 
 运行：python neiwang.py       （Windows 可双击 启动.bat）
 更新：更新是单独一个程序 neiwang_update.py（Windows 可双击 更新.bat），可单独运行；
@@ -112,6 +118,22 @@ RENAME_VOTE_WAIT  = float(os.environ.get("NEIWANG_VOTE_WAIT", "120"))  # 投票�
 
 SECRET_RELAY_RETRY = 3    # 转存送达失败（校验不通过等）的重试上限
 
+# ---------------------------------------------------------------------------
+# 内网（准入 + 物理地址登记 + 入网投票）
+#   规则：内网成员 ≤5 人 -> 免投票自动通过；6–7 人 -> 全票通过；
+#        ≥8 人 -> 超过 1/3 同意即可（"不得少于 8 人"指 1/3 规则只在 ≥8 人时生效）
+#   投票有效期 1 天（超过一天视为投票结束）；投出后 5 分钟内可以改票，可弃权
+# ---------------------------------------------------------------------------
+NET_LIMIT_NO_VOTE = int(os.environ.get("NEIWANG_NET_NO_VOTE", "5"))     # 不超过该人数免投票
+NET_LIMIT_FULL    = int(os.environ.get("NEIWANG_NET_FULL_VOTE", "7"))   # 不超过该人数需全票通过
+NET_SCAN_WINDOW   = float(os.environ.get("NEIWANG_SCAN_WINDOW", "3"))   # 开机扫描附近内网的秒数
+NET_VOTE_WINDOW   = float(os.environ.get("NEIWANG_NET_VOTE_WINDOW", "86400"))  # 入网投票有效期（1 天）
+NET_VOTE_CHANGE   = float(os.environ.get("NEIWANG_NET_VOTE_CHANGE", "300"))    # 投出后可变票的秒数（5 分钟）
+NET_ANNOUNCE_INTERVAL = float(os.environ.get("NEIWANG_NET_ANNOUNCE", "15"))     # 内网公告/登记表同步间隔
+NET_REQ_REBROADCAST   = float(os.environ.get("NEIWANG_NET_REQ_REBROADCAST", "10"))  # 入网申请重播间隔
+NET_NEARBY_TTL    = float(os.environ.get("NEIWANG_NET_NEARBY_TTL", "40"))       # 附近内网信息有效期
+NET_NO_MEMBER = "（不属于本内网）"
+
 
 # ----------------------------------------------------------------------------
 # 小工具函数
@@ -141,6 +163,40 @@ def sanitize_name(s: str, maxlen: int = 120) -> str:
     if not s:
         s = "未命名"
     return s[:maxlen]
+
+
+def fmt_mac(uid: str) -> str:
+    """把设备唯一 ID 显示成物理地址样子。
+
+    · 真实网卡 MAC（12 位十六进制）：AABBCCDDEEFF -> AA-BB-CC-DD-EE-FF
+    · 取不到网卡时程序生成的持久随机 ID（RND + 12 位）：RND-XXXX-XXXX-XXXX
+    """
+    u = str(uid or "")
+    if len(u) == 12 and all(c in "0123456789abcdefABCDEF" for c in u):
+        return "-".join(u[i:i + 2] for i in range(0, 12, 2)).upper()
+    if u.startswith("RND") and len(u) == 15:
+        body = u[3:].upper()
+        return "RND-" + "-".join(body[i:i + 4] for i in range(0, 12, 4))
+    return u or "未知"
+
+
+def net_vote_need(members: int) -> tuple:
+    """内网准入投票规则。
+
+    返回 (需要的最少同意票数, 规则说明文字)；票数为 0 表示免投票直接通过。
+      · 成员 ≤5 人        -> 免投票（人少不折腾）
+      · 成员 6–7 人       -> 全票通过
+      · 成员 ≥8 人        -> 超过 1/3 同意即可（1/3 规则不得少于 8 人）
+    """
+    members = max(0, int(members))
+    if members <= NET_LIMIT_NO_VOTE:
+        return 0, f"内网 {members} 人（不超过 {NET_LIMIT_NO_VOTE} 人），免投票自动通过"
+    if members <= NET_LIMIT_FULL:
+        return members, (f"内网 {members} 人（{NET_LIMIT_NO_VOTE + 1}–{NET_LIMIT_FULL} 人），"
+                         f"需全票通过（{members} 票）")
+    need = members // 3 + 1
+    return need, (f"内网 {members} 人（{NET_LIMIT_FULL + 1} 人及以上），"
+                  f"需超过 1/3 同意即 {need} 票")
 
 
 def parse_update_manifest(data: str) -> dict:
@@ -552,6 +608,20 @@ class PeerCore:
         self._rename_requests = set()  # 已向本机用户展示过的改名提案 pid（去重弹窗）
         self._my_votes = set()         # 本机用户已投过票的提案 pid（同一提案只计一票）
 
+        # 内网（准入投票 + 物理地址登记）
+        self.net = None              # 我所在的内网 {"nid","name","founder_mac","created_ts"}
+        self.net_members = {}        # mac -> {"mac","name","ip","tcp_port","joined_ts","founder"}
+        self.net_reqs = {}           # req_id -> 入网申请（含投票、状态、截止时间）
+        self.net_nearby = {}         # nid -> 附近发现的内网（未加入時用于选择）
+        self.net_my_votes = {}       # req_id -> {"approve":True/False/None(弃权),"ts"}
+        self.net_applying = None     # 我正在等待审批的申请
+        self._net_last_announce = 0.0
+        self._net_last_sync = 0.0
+        self._net_last_req = 0.0
+        self._net_last_vote_replay = 0.0
+        self._net_reply_ts = 0.0     # 扫描应答节流（广播应答，见 _on_net_scan）
+        self._load_net()
+
     # ------------------------------------------------------------- 基本属性 --
     @property
     def my_name(self) -> str:
@@ -562,6 +632,7 @@ class PeerCore:
 
     # ------------------------------------------------------------- 启动/停止 --
     def start(self):
+        self._running = True          # 支持 stop() 之后再 start()（下线后重新上线）
         self._udp_sock = self._make_udp()
         self._tcp_srv = self._make_tcp()
         workers = [
@@ -570,6 +641,7 @@ class PeerCore:
             ("presence", self._presence_loop),
             ("sweep", self._sweep_loop),
             ("download", self._download_worker),
+            ("net", self._net_loop),
         ]
         for _name, fn in workers:
             t = threading.Thread(target=self._safe(fn), name=f"core-{_name}", daemon=True)
@@ -715,6 +787,21 @@ class PeerCore:
             self._on_rename_vote(msg)
         elif kind == "dm":
             self._on_dm(msg)
+        # ---------------- 内网（准入 / 登记表 / 投票） ----------------
+        elif kind == "net_scan":
+            self._on_net_scan(msg, addr)
+        elif kind == "net_announce":
+            self._on_net_announce(msg, addr)
+        elif kind == "net_join_req":
+            self._on_net_join_req(msg, addr)
+        elif kind == "net_join_vote":
+            self._on_net_join_vote(msg)
+        elif kind == "net_registry":
+            self._on_net_registry(msg, addr)
+        elif kind == "net_member_left":
+            self._on_net_member_left(msg)
+        elif kind == "net_join_result":
+            self._on_net_join_result(msg)
 
     def _prune_seen(self):
         ts = now_ts()
@@ -812,6 +899,7 @@ class PeerCore:
         g = self.groups.get(gid)
         if not g:
             return
+        self._require_net()
         self._broadcast({
             "t": "chat", "gid": gid, "gname": g["gname"],
             "text": text, "ts": now_ts(),
@@ -823,6 +911,8 @@ class PeerCore:
         gid = msg.get("gid")
         if gid not in self.groups:
             return
+        if not self._member_ok(msg.get("uid")):
+            return   # 内网外的机器发来的消息一律忽略
         self._emit("chat", {"gid": gid, "gname": msg.get("gname", ""),
                             "from_name": msg.get("name", "?"), "from_uid": msg.get("uid"),
                             "text": str(msg.get("text", ""))[:MAX_CHAT_LEN],
@@ -843,6 +933,8 @@ class PeerCore:
     def _on_dm(self, msg: dict):
         """收到私聊：不是发给自己的静默忽略（不记日志、不打扰）。"""
         if msg.get("to_uid") != self.uid:
+            return
+        if not self._member_ok(msg.get("uid")):
             return
         self._emit("dm", {"to_uid": self.uid, "from_uid": str(msg.get("uid") or ""),
                           "from_name": str(msg.get("name", "?")),
@@ -1000,7 +1092,13 @@ class PeerCore:
         return True
 
     # ------------------------------------------------------------- 群组管理 --
+    def _require_net(self):
+        """群组相关功能都要求先加入内网（内网是准入层：没入网的程序是空的）。"""
+        if not self.in_net():
+            raise PermissionError("还没有加入内网：请先在「内网」里申请加入或自行建立一个内网")
+
     def create_group(self, gname: str) -> dict:
+        self._require_net()
         gname = sanitize_name(gname, 40)
         gid = secrets.token_hex(3).upper()
         g = {"gid": gid, "gname": gname}
@@ -1013,6 +1111,7 @@ class PeerCore:
         return g
 
     def join_group(self, gid: str, gname: str = "") -> dict:
+        self._require_net()
         gid = str(gid).strip().upper()
         if not gid:
             raise ValueError("群号不能为空")
@@ -1148,6 +1247,8 @@ class PeerCore:
         pid = msg.get("pid")
         if not pid or pid in self._rename_requests:
             return
+        if not self._member_ok(msg.get("uid")):
+            return
         if len(self._rename_requests) > 1000:
             self._rename_requests.clear()
         self._rename_requests.add(pid)
@@ -1189,8 +1290,748 @@ class PeerCore:
         self._emit("log", f"[{fmt_time(now_ts())}] {self.my_name}: {text}")
 
     def _on_log(self, msg: dict):
+        if not self._member_ok(msg.get("uid")):
+            return   # 内网外的机器不能往我们的公共日志里写东西
         self._emit("log", f"[{fmt_time(msg.get('ts', now_ts()))}] "
                           f"{msg.get('name', '?')}: {msg.get('text', '')}")
+
+    # ========================================================= 内网（准入投票）--
+    #   · 登记表记录每个成员的物理地址（MAC）与内网 IP，全网同步
+    #   · 启动时：已在内网 -> 公告；否则扫描附近内网 -> 有则申请加入，无则自行建立
+    #   · 入网审批：≤5 人免投票；6–7 人全票通过；≥8 人超过 1/3 同意即可
+    #   · 投票有效期 1 天（超过一天视为投票结束）；投出后 5 分钟内可改票，可弃权
+    def net_path(self) -> Path:
+        return self.data_root / "net.json"
+
+    def _load_net(self):
+        try:
+            p = self.net_path()
+            if not p.exists():
+                return
+            d = json.loads(p.read_text(encoding="utf-8"))
+            net = d.get("net") or None
+            if net and net.get("nid"):
+                self.net = net
+                self.net_members = {m["mac"]: m for m in (d.get("members") or [])
+                                    if isinstance(m, dict) and m.get("mac")}
+                self.net_reqs = {r["req_id"]: r for r in (d.get("reqs") or [])
+                                 if isinstance(r, dict) and r.get("req_id")}
+                self.net_my_votes = {k: v for k, v in (d.get("my_votes") or {}).items()}
+                self.net_applying = d.get("applying") or None
+                self._net_add_member(self.uid, self.my_name, get_local_ips()[0],
+                                     int(self.cfg.get("tcp_port") or 0))
+        except Exception:
+            traceback.print_exc()
+
+    def _save_net(self):
+        try:
+            self.net_path().write_text(json.dumps({
+                "net": self.net,
+                "members": list(self.net_members.values()),
+                "reqs": list(self.net_reqs.values()),
+                "my_votes": self.net_my_votes,
+                "applying": self.net_applying,
+            }, ensure_ascii=False, indent=1), encoding="utf-8")
+        except Exception:
+            pass
+
+    def in_net(self) -> bool:
+        return bool(self.net and self.net.get("nid"))
+
+    def _member_ok(self, uid) -> bool:
+        """对方是否为本人所在内网的成员（尚未加入内网时不限制，保持旧行为）。"""
+        if not self.in_net():
+            return True
+        uid = str(uid or "")
+        if not uid:
+            return True
+        return uid == self.uid or uid in self.net_members
+
+    # ------------------------------------------------------------- 查询（供 GUI）--
+    def net_view(self) -> dict:
+        if not self.in_net():
+            return {"in_net": False, "applying": dict(self.net_applying) if self.net_applying else None,
+                    "nearby": self.net_nearby_list()}
+        members = sorted(self.net_members.values(),
+                         key=lambda m: (not m.get("founder"), float(m.get("joined_ts") or 0)))
+        return {
+            "in_net": True,
+            "nid": self.net.get("nid"), "name": self.net.get("name"),
+            "founder_mac": self.net.get("founder_mac", ""),
+            "is_founder": self.net.get("founder_mac") == self.uid,
+            "my_mac": self.uid, "my_mac_pretty": fmt_mac(self.uid),
+            "member_count": len(members),
+            "members": members,
+            "online_count": sum(1 for m in members if self.is_online(m["mac"]) or m["mac"] == self.uid),
+            "created_ts": self.net.get("created_ts", 0),
+        }
+
+    def net_nearby_list(self) -> list:
+        return sorted(self.net_nearby.values(), key=lambda n: (-int(n.get("member_count") or 0), n.get("nid", "")))
+
+    def _req_progress(self, req: dict) -> dict:
+        voters = list(req.get("voters") or [])
+        votes = req.get("votes") or {}
+        approvals = [m for m in voters if (votes.get(m) or {}).get("approve") is True]
+        rejects = [m for m in voters if (votes.get(m) or {}).get("approve") is False]
+        abstains = [m for m in voters if (votes.get(m) or {}).get("approve") is None and m in votes]
+        need, desc = net_vote_need(len(voters))
+        return {"voters": len(voters), "need": need, "desc": desc,
+                "approvals": len(approvals), "rejects": len(rejects), "abstains": len(abstains),
+                "approvers": approvals, "rejecters": rejects}
+
+    def net_pending_for_me(self) -> list:
+        """需要我投票的入网申请（左侧投票图标小红点用这个）。"""
+        if not self.in_net():
+            return []
+        out = []
+        for rid, req in self.net_reqs.items():
+            if req.get("state") != "pending":
+                continue
+            if req.get("nid") != self.net.get("nid"):
+                continue
+            if req.get("mac") == self.uid:          # 我自己发起的申请
+                continue
+            if self.uid not in (req.get("voters") or []):
+                continue
+            if rid in self.net_my_votes:            # 已投过（可能仍可改票）
+                continue
+            out.append(self._req_card(rid, req))
+        return sorted(out, key=lambda r: -float(r.get("created_ts") or 0))
+
+    def net_open_votes(self) -> list:
+        """当前还在进行中的投票（含我已投的，用于投票面板）。"""
+        if not self.in_net():
+            return [self._req_card(rid, req) for rid, req in self.net_reqs.items()
+                    if req.get("state") == "pending" and req.get("mac") == self.uid]
+        out = []
+        for rid, req in self.net_reqs.items():
+            if req.get("nid") != self.net.get("nid"):
+                continue
+            if req.get("state") != "pending":
+                continue
+            out.append(self._req_card(rid, req))
+        return sorted(out, key=lambda r: -float(r.get("created_ts") or 0))
+
+    def _req_card(self, rid: str, req: dict) -> dict:
+        prog = self._req_progress(req)
+        mv = self.net_my_votes.get(rid)
+        card = {
+            "req_id": rid, "name": req.get("name", "?"), "mac": req.get("mac", ""),
+            "mac_pretty": fmt_mac(req.get("mac")), "ip": req.get("ip", ""),
+            "state": req.get("state", "pending"), "note": req.get("note", ""),
+            "created_ts": float(req.get("created_ts") or 0),
+            "deadline": float(req.get("deadline") or 0),
+            "remain": max(0.0, float(req.get("deadline") or 0) - now_ts()),
+            "from_me": req.get("mac") == self.uid,
+            "voted": mv is not None,
+            "my_choice": (None if mv is None else mv.get("approve")),
+            "my_ts": float((mv or {}).get("ts") or 0),
+            "change_left": max(0.0, NET_VOTE_CHANGE - (now_ts() - float((mv or {}).get("ts") or 0)))
+                           if mv else 0.0,
+        }
+        card.update(prog)
+        return card
+
+    def net_vote_history(self) -> list:
+        """投票历史（「更多」页面展示；5 分钟内且未结束的可改票）。"""
+        out = []
+        for rid, req in self.net_reqs.items():
+            card = self._req_card(rid, req)
+            card["can_change"] = (card["voted"] and card["state"] == "pending"
+                                  and card["change_left"] > 0)
+            out.append(card)
+        return sorted(out, key=lambda r: -float(r.get("created_ts") or 0))
+
+    # ------------------------------------------------------------- 建立 / 退出 --
+    def net_create(self, name: str = "") -> dict:
+        if self.in_net():
+            raise RuntimeError("已经在内网里了")
+        self._net_suppress_auto = False
+        name = sanitize_name(name or f"{socket.gethostname()} 的内网", 30)
+        nid = secrets.token_hex(3).upper()
+        self.net = {"nid": nid, "name": name, "founder_mac": self.uid, "created_ts": now_ts()}
+        self.net_members = {}
+        self._net_add_member(self.uid, self.my_name, get_local_ips()[0], self.my_tcp_port(), founder=True)
+        self._save_net()
+        self._net_announce()
+        self._net_sync()
+        self.broadcast_log(f"「{self.my_name}」发起内网「{name}」"
+                           f"（物理地址 {fmt_mac(self.uid)}），等待同学加入")
+        self._emit("net_status", f"附近没有发现内网，已自行建立内网「{name}」")
+        self._emit("net_changed")
+        return dict(self.net)
+
+    def net_leave(self):
+        if not self.in_net():
+            return
+        nid, name = self.net.get("nid"), self.net.get("name")
+        self._broadcast({"t": "net_member_left", "nid": nid, "mac": self.uid, "name": self.my_name})
+        try:
+            self.broadcast_log(f"「{self.my_name}」退出了内网「{name}」")
+        except Exception:
+            pass
+        self.net = None
+        self.net_members = {}
+        self.net_reqs = {}
+        self.net_applying = None
+        self.net_my_votes = {}
+        self._net_suppress_auto = True     # 手动退出后不再自动加回去，交由用户决定
+        self._save_net()
+        self._emit("net_status", "已退出内网：可在「内网」页手动申请加入其它内网，或自行建立内网")
+        self._emit("net_changed")
+        t = threading.Thread(target=self._safe(self._net_rescan_after_leave), name="net-rescan",
+                             daemon=True)
+        t.start()
+        self._threads.append(t)
+
+    def _net_rescan_after_leave(self):
+        self.net_scan(NET_SCAN_WINDOW)
+        self._emit("net_changed")
+
+    def net_rename(self, name: str):
+        if not self.in_net():
+            raise RuntimeError("还没有加入内网")
+        if self.net.get("founder_mac") != self.uid:
+            raise PermissionError("只有内网的发起者可以重命名内网")
+        name = sanitize_name(name, 30)
+        old = self.net.get("name")
+        self.net["name"] = name
+        self._save_net()
+        self._net_announce()
+        self._net_sync()
+        self.broadcast_log(f"内网「{old}」更名为「{name}」")
+        self._emit("net_changed")
+
+    # ------------------------------------------------------------- 扫描 / 申请 --
+    def net_scan(self, seconds: float = None) -> list:
+        """扫描附近的内网（广播 net_scan，成员会立刻应答公告）。"""
+        seconds = NET_SCAN_WINDOW if seconds is None else float(seconds)
+        deadline = now_ts() + max(0.5, seconds)
+        self._emit("net_status", f"正在扫描附近的内网（{seconds:.0f} 秒）…")
+        while self._running and now_ts() < deadline:
+            self._broadcast({"t": "net_scan", "ts": now_ts()})
+            time.sleep(1.0)
+        nets = [n for n in self.net_nearby.values() if now_ts() - n["ts"] <= NET_NEARBY_TTL]
+        self._emit("net_nearby_changed")
+        return nets
+
+    def net_apply_join(self, nid: str) -> dict:
+        """向附近发现的内网提交入网申请（等成员投票；≤5 人自动通过）。"""
+        if self.in_net():
+            raise RuntimeError("已经在内网里了")
+        self._net_suppress_auto = False
+        info = self.net_nearby.get(nid)
+        if not info:
+            raise ValueError("附近没有这个内网（请重新扫描）")
+        voters = sorted(set(info.get("macs") or []))
+        req_id = self._new_msg_id()
+        created = now_ts()
+        self.net_applying = {"req_id": req_id, "nid": nid, "name": info.get("name", ""),
+                             "voters": voters, "created_ts": created,
+                             "deadline": created + NET_VOTE_WINDOW}
+        self.net_reqs[req_id] = {
+            "req_id": req_id, "nid": nid, "mac": self.uid, "name": self.my_name,
+            "ip": get_local_ips()[0], "tcp_port": self.my_tcp_port(),
+            "voters": voters, "votes": {}, "state": "pending", "note": "",
+            "created_ts": created, "deadline": created + NET_VOTE_WINDOW,
+        }
+        self._save_net()
+        self._net_last_req = 0.0
+        self._net_join_req_broadcast()
+        need, desc = net_vote_need(len(voters))
+        if need == 0:
+            self._emit("net_status", f"已提交申请：{desc}，等待成员确认…")
+        else:
+            self._emit("net_status", f"已提交申请：{desc}，等待成员投票（1 天内有效）")
+        self._emit("net_vote_changed")
+        self._emit("net_changed")
+        return dict(self.net_applying)
+
+    def net_cancel_apply(self):
+        a = self.net_applying
+        if not a:
+            return
+        self.net_reqs.pop(a.get("req_id"), None)
+        self.net_applying = None
+        self._save_net()
+        self._emit("net_status", "已撤回入网申请")
+        self._emit("net_vote_changed")
+        self._emit("net_changed")
+
+    # ------------------------------------------------------------- 投票 --
+    def net_cast_vote(self, req_id: str, approve):
+        """对入网申请投票：True 同意 / False 拒绝 / None 弃权。投出后 5 分钟内可改。"""
+        req = self.net_reqs.get(str(req_id))
+        if not req:
+            raise RuntimeError("找不到该投票")
+        if req.get("state") != "pending":
+            raise RuntimeError("该投票已经结束")
+        if not self.in_net() or req.get("nid") != self.net.get("nid"):
+            raise RuntimeError("只有内网成员才能投票")
+        if self.uid not in (req.get("voters") or []):
+            raise RuntimeError("你没有本次投票权")
+        prev = self.net_my_votes.get(str(req_id))
+        if prev and now_ts() - float(prev.get("ts") or 0) > NET_VOTE_CHANGE:
+            raise RuntimeError(f"投票已超过 {int(NET_VOTE_CHANGE // 60)} 分钟，不能再改票")
+        val = None if approve is None else bool(approve)
+        ts = now_ts()
+        self.net_my_votes[str(req_id)] = {"approve": val, "ts": ts}
+        req.setdefault("votes", {})[self.uid] = {"approve": val, "ts": ts, "name": self.my_name}
+        self._save_net()
+        self._broadcast({"t": "net_join_vote", "req_id": str(req_id), "nid": req.get("nid"),
+                         "voter": self.uid, "voter_name": self.my_name, "approve": val, "ts": ts})
+        self._emit("net_vote_changed")
+        self._net_eval_req(req)
+        self._net_sync()
+
+    # ------------------------------------------------------------- 广播 --
+    def _net_announce(self, addr=None):
+        if not self.in_net():
+            return
+        self._broadcast({"t": "net_announce", "nid": self.net["nid"],
+                         "net_name": self.net.get("name", ""),
+                         "founder_mac": self.net.get("founder_mac", ""),
+                         "member_count": len(self.net_members),
+                         "macs": sorted(self.net_members)[:64], "ts": now_ts()}, addr=addr)
+
+    def _net_sync(self, addr=None):
+        if not self.in_net():
+            return
+        # 待办申请 + 最近结束的申请（否则申请人错过一次广播就只能等超时）
+        now = now_ts()
+        reqs = [r for r in self.net_reqs.values()
+                if r.get("nid") == self.net["nid"]
+                and (r.get("state") == "pending"
+                     or now - float(r.get("closed_ts") or 0) <= 3600)]
+        reqs = reqs[-30:]
+        self._broadcast({"t": "net_registry", "nid": self.net["nid"],
+                         "net_name": self.net.get("name", ""),
+                         "founder_mac": self.net.get("founder_mac", ""),
+                         "members": list(self.net_members.values()),
+                         "reqs": reqs, "ts": now_ts()}, addr=addr)
+
+    def _net_join_req_broadcast(self):
+        a = self.net_applying
+        if not a:
+            return
+        self._broadcast({"t": "net_join_req", "req_id": a["req_id"], "nid": a["nid"],
+                         "mac": self.uid, "name": self.my_name,
+                         "ip": get_local_ips()[0], "tcp_port": self.my_tcp_port(),
+                         "voters": a.get("voters") or [],
+                         "created_ts": a.get("created_ts"), "ts": now_ts()})
+
+    def _net_add_member(self, mac: str, name: str, ip: str = "", tcp_port: int = 0,
+                        founder: bool = False):
+        mac = str(mac or "")
+        if not mac:
+            return False
+        old = self.net_members.get(mac) or {}
+        if not old:
+            self.net_members[mac] = {
+                "mac": mac, "name": str(name or "?"), "ip": str(ip or ""),
+                "tcp_port": int(tcp_port or 0), "joined_ts": now_ts(),
+                "founder": bool(founder or (self.net and self.net.get("founder_mac") == mac)),
+            }
+            return True
+        changed = False
+        for key, val in (("name", name), ("ip", ip), ("tcp_port", tcp_port)):
+            if val and old.get(key) != val:
+                old[key] = int(val) if key == "tcp_port" else str(val)
+                changed = True
+        if founder and not old.get("founder"):
+            old["founder"] = True
+            changed = True
+        return changed
+
+    # ------------------------------------------------------------- 收包 --
+    def _on_net_scan(self, msg: dict, addr):
+        """有人（新电脑）在扫描附近的内网：立刻应答，方便它发现我们。
+
+        注意：应答要用广播（不能用单播）—— 同一台机器上多个实例共用同一个 UDP 端口时，
+        单播报文只会被其中一个 socket 收到，广播才能让所有实例都收到。
+        """
+        if not self.in_net():
+            return
+        now = now_ts()
+        if now - self._net_reply_ts < 0.5:      # 节流：避免多台电脑同时扫描时刷屏
+            return
+        self._net_reply_ts = now
+        self._net_announce()
+
+    def _on_net_announce(self, msg: dict, addr):
+        nid = msg.get("nid")
+        if not nid:
+            return
+        if self.in_net() and nid == self.net.get("nid"):
+            return   # 自己所在内网的公告
+        self.net_nearby[nid] = {
+            "nid": nid, "name": str(msg.get("net_name") or f"内网{nid[:6]}"),
+            "founder_mac": str(msg.get("founder_mac") or ""),
+            "member_count": int(msg.get("member_count") or 0),
+            "macs": list(msg.get("macs") or []),
+            "ip": (addr[0] if addr else ""), "ts": now_ts(),
+        }
+        self._emit("net_nearby_changed")
+
+    def _on_net_join_req(self, msg: dict, addr):
+        """收到入网申请：登记并等本机用户投票（≤5 人时免投票直接通过）。"""
+        if not self.in_net():
+            return
+        if msg.get("nid") != self.net.get("nid"):
+            return
+        req_id, mac = msg.get("req_id"), str(msg.get("mac") or "")
+        if not req_id or not mac:
+            return
+        if mac in self.net_members:
+            self._net_sync()   # 已经是成员：把登记表广播出去，让他直接完成加入
+            return
+        req = self.net_reqs.get(req_id)
+        if req and req.get("state") != "pending":
+            return
+        if not req:
+            created = float(msg.get("created_ts") or now_ts())
+            req = {
+                "req_id": req_id, "nid": msg.get("nid"), "mac": mac,
+                "name": str(msg.get("name") or "?"), "ip": str(msg.get("ip") or (addr[0] if addr else "")),
+                "tcp_port": int(msg.get("tcp_port") or 0),
+                "voters": sorted(set(msg.get("voters") or []) | {self.uid}),
+                "votes": {}, "state": "pending", "note": "",
+                "created_ts": created, "deadline": created + NET_VOTE_WINDOW,
+            }
+            self.net_reqs[req_id] = req
+            need, desc = net_vote_need(len(req["voters"]))
+            self._emit("log", f"[{fmt_time(now_ts())}] {req['name']}（物理地址 {fmt_mac(mac)}）"
+                              f"申请加入内网「{self.net.get('name')}」：{desc}")
+            self._emit("net_vote_changed")
+        else:
+            # 合并申请方带过来的投票人名单
+            vs = set(req.get("voters") or []) | set(msg.get("voters") or []) | {self.uid}
+            if vs != set(req.get("voters") or []):
+                req["voters"] = sorted(vs)
+        self._save_net()
+        self._net_eval_req(req)
+        self._net_sync()
+
+    def _on_net_join_vote(self, msg: dict):
+        req = self.net_reqs.get(msg.get("req_id"))
+        if not req or req.get("state") != "pending":
+            return
+        voter = str(msg.get("voter") or msg.get("uid") or "")
+        if not voter or voter not in (req.get("voters") or []):
+            return
+        approve = msg.get("approve")
+        approve = None if approve is None else bool(approve)
+        ts = float(msg.get("ts") or now_ts())
+        votes = req.setdefault("votes", {})
+        old = votes.get(voter)
+        if old and float(old.get("ts") or 0) >= ts:
+            return   # 旧票忽略
+        votes[voter] = {"approve": approve, "ts": ts, "name": str(msg.get("voter_name") or "")}
+        self._save_net()
+        self._emit("net_vote_changed")
+        self._net_eval_req(req)
+
+    def _on_net_registry(self, msg: dict, addr):
+        """登记表同步：成员、待办申请与投票都会在这里对齐（掉线过也能补齐）。"""
+        nid = msg.get("nid")
+        if not nid:
+            return
+        if self.in_net() and nid == self.net.get("nid"):
+            changed = False
+            for m in (msg.get("members") or []):
+                if isinstance(m, dict) and self._net_add_member(
+                        m.get("mac"), m.get("name"), m.get("ip", ""), m.get("tcp_port") or 0,
+                        founder=bool(m.get("founder"))):
+                    changed = True
+            for r in (msg.get("reqs") or []):
+                if isinstance(r, dict) and self._merge_req(r):
+                    changed = True
+            for r in list(self.net_reqs.values()):
+                if r.get("state") == "pending" and r.get("nid") == nid:
+                    self._net_eval_req(r)
+            if changed:
+                self._save_net()
+            self._emit("net_changed")
+            self._emit("net_vote_changed")
+            return
+        # 我还没入网：如果这是我的申请目标，同步投票进度 / 判断是否已被接纳
+        a = self.net_applying
+        if not a or nid != a.get("nid"):
+            return
+        macs = {m.get("mac") for m in (msg.get("members") or []) if isinstance(m, dict)}
+        if self.uid in macs:
+            self._net_join_success(msg)
+            return
+        changed = False
+        rejected = None
+        for r in (msg.get("reqs") or []):
+            if isinstance(r, dict) and r.get("req_id") == a.get("req_id"):
+                local = self.net_reqs.get(a["req_id"])
+                if local:
+                    votes = local.setdefault("votes", {})
+                    for k, v in (r.get("votes") or {}).items():
+                        old = votes.get(k)
+                        if not old or float(v.get("ts") or 0) > float(old.get("ts") or 0):
+                            votes[k] = v
+                            changed = True
+                    vs = set(local.get("voters") or []) | set(r.get("voters") or [])
+                    if vs != set(local.get("voters") or []):
+                        local["voters"] = sorted(vs)
+                        changed = True
+                    if r.get("state") == "rejected":
+                        local["state"] = "rejected"
+                        local["note"] = str(r.get("note") or "")
+                        rejected = local.get("note") or "申请未通过"
+        if rejected:
+            self.net_applying = None
+            self._save_net()
+            self._emit("net_result", False, f"入网申请未通过：{rejected}")
+            self._emit("net_vote_changed")
+            self._emit("net_changed")
+            return
+        if changed:
+            self._emit("net_vote_changed")
+            self._emit("net_changed")
+
+    def _merge_req(self, remote: dict) -> bool:
+        rid = remote.get("req_id")
+        if not rid:
+            return False
+        local = self.net_reqs.get(rid)
+        if not local:
+            created = float(remote.get("created_ts") or now_ts())
+            self.net_reqs[rid] = {
+                "req_id": rid, "nid": remote.get("nid"), "mac": str(remote.get("mac") or ""),
+                "name": str(remote.get("name") or "?"), "ip": str(remote.get("ip") or ""),
+                "tcp_port": int(remote.get("tcp_port") or 0),
+                "voters": sorted(set(remote.get("voters") or [])),
+                "votes": dict(remote.get("votes") or {}),
+                "state": remote.get("state", "pending"), "note": str(remote.get("note") or ""),
+                "created_ts": created, "deadline": float(remote.get("deadline") or (created + NET_VOTE_WINDOW)),
+            }
+            return True
+        changed = False
+        vs = set(local.get("voters") or []) | set(remote.get("voters") or [])
+        if vs != set(local.get("voters") or []):
+            local["voters"] = sorted(vs)
+            changed = True
+        votes = local.setdefault("votes", {})
+        for k, v in (remote.get("votes") or {}).items():
+            old = votes.get(k)
+            if not old or float(v.get("ts") or 0) > float(old.get("ts") or 0):
+                votes[k] = v
+                changed = True
+        if local.get("state") == "pending" and remote.get("state") in ("approved", "rejected"):
+            local["state"] = remote["state"]
+            local["note"] = str(remote.get("note") or "")
+            changed = True
+        return changed
+
+    def _on_net_member_left(self, msg: dict):
+        if not self.in_net() or msg.get("nid") != self.net.get("nid"):
+            return
+        mac = str(msg.get("mac") or "")
+        if mac and self.net_members.pop(mac, None):
+            self._save_net()
+            self._emit("log", f"[{fmt_time(now_ts())}] {msg.get('name', '?')}"
+                              f"（物理地址 {fmt_mac(mac)}）退出了内网")
+            self._emit("net_changed")
+
+    def _on_net_join_result(self, msg: dict):
+        a = self.net_applying
+        if not a or msg.get("req_id") != a.get("req_id"):
+            return
+        if msg.get("approved"):
+            return
+        reason = str(msg.get("reason") or "申请未通过")
+        self.net_applying = None
+        req = self.net_reqs.get(msg.get("req_id"))
+        if req:
+            req["state"] = "rejected"
+            req["note"] = reason
+        self._save_net()
+        self._emit("net_result", False, f"入网申请未通过：{reason}")
+        self._emit("net_vote_changed")
+        self._emit("net_changed")
+
+    # ------------------------------------------------------------- 审批评估 --
+    def _net_eval_req(self, req: dict):
+        if req.get("state") != "pending":
+            return
+        if not self.in_net() or req.get("nid") != self.net.get("nid"):
+            return
+        if req.get("mac") in self.net_members:
+            req["state"] = "approved"
+            req["note"] = "已是内网成员"
+            return
+        prog = self._req_progress(req)
+        need, voters = prog["need"], prog["voters"]
+        now = now_ts()
+        if need == 0:
+            self._net_approve_req(req, f"{prog['desc']}，自动通过")
+            return
+        if prog["approvals"] >= need:
+            self._net_approve_req(req, f"同意 {prog['approvals']}/{voters} 票，"
+                                       f"已达门槛（{prog['desc']}）")
+            return
+        if prog["rejects"] > 0 and need >= voters:
+            self._net_reject_req(req, f"有 {prog['rejects']} 名成员反对，无法全票通过")
+            return
+        if now > float(req.get("deadline") or 0):
+            hours = max(1, int(NET_VOTE_WINDOW // 3600))
+            self._net_reject_req(req, f"投票已满 {hours} 小时仍只有 {prog['approvals']} 票"
+                                      f"（需 {need} 票），投票结束")
+
+    def _net_approve_req(self, req: dict, note: str):
+        req["state"] = "approved"
+        req["note"] = note
+        req["closed_ts"] = now_ts()
+        self._net_add_member(req.get("mac"), req.get("name"), req.get("ip", ""),
+                             req.get("tcp_port") or 0)
+        self._save_net()
+        self._net_sync()
+        self.broadcast_log(f"「{req.get('name', '?')}」（物理地址 {fmt_mac(req.get('mac'))}）"
+                           f"获准加入内网「{self.net.get('name')}」：{note}")
+        self._emit("net_changed")
+        self._emit("net_vote_changed")
+
+    def _net_reject_req(self, req: dict, note: str):
+        req["state"] = "rejected"
+        req["note"] = note
+        req["closed_ts"] = now_ts()
+        self._save_net()
+        macs = sorted(set(req.get("voters") or []) | {req.get("mac") or ""})
+        if macs and macs[0] == self.uid:   # 由物理地址最小者统一宣布结果，避免重复广播
+            self._broadcast({"t": "net_join_result", "req_id": req.get("req_id"),
+                             "nid": req.get("nid"), "mac": req.get("mac"),
+                             "approved": False, "reason": note, "ts": now_ts()})
+        self._emit("log", f"[{fmt_time(now_ts())}] {req.get('name', '?')}"
+                          f"（物理地址 {fmt_mac(req.get('mac'))}）入网申请未通过：{note}")
+        self._emit("net_changed")
+        self._emit("net_vote_changed")
+
+    def _net_join_success(self, registry: dict):
+        a = self.net_applying or {}
+        nid = registry.get("nid") or a.get("nid")
+        self.net = {
+            "nid": nid,
+            "name": str(registry.get("net_name") or a.get("name") or f"内网{nid[:6]}"),
+            "founder_mac": str(registry.get("founder_mac") or ""),
+            "created_ts": now_ts(), "joined_ts": now_ts(),
+        }
+        self.net_members = {}
+        for m in (registry.get("members") or []):
+            if isinstance(m, dict) and m.get("mac"):
+                self._net_add_member(m.get("mac"), m.get("name"), m.get("ip", ""),
+                                     m.get("tcp_port") or 0, founder=bool(m.get("founder")))
+        self._net_add_member(self.uid, self.my_name, get_local_ips()[0], self.my_tcp_port())
+        self.net_applying = None
+        self._save_net()
+        self._net_announce()
+        self._net_sync()
+        self.broadcast_log(f"「{self.my_name}」（物理地址 {fmt_mac(self.uid)}）"
+                           f"加入了内网「{self.net['name']}」")
+        self._emit("net_changed")
+        self._emit("net_result", True, f"已加入内网「{self.net['name']}」"
+                                       f"（成员 {len(self.net_members)} 人）")
+
+    # ------------------------------------------------------------- 周期循环 --
+    def _net_loop(self):
+        time.sleep(0.4)          # 等 UDP 线程就绪
+        if not self._running:
+            return
+        self._net_bootstrap()
+        while self._running:
+            try:
+                self._net_tick()
+            except Exception:
+                if self._running:
+                    traceback.print_exc()
+            time.sleep(2.0)
+
+    def _net_bootstrap(self):
+        if self.in_net():
+            self._net_announce()
+            self._net_sync()
+            self._emit("net_changed")
+            self._emit("net_status", f"已在内网「{self.net.get('name')}」"
+                                     f"（成员 {len(self.net_members)} 人）")
+            return
+        if self.net_applying:
+            self._emit("net_status", "正在等待内网成员投票…")
+            self._net_last_req = 0.0
+            self._net_join_req_broadcast()
+            self._emit("net_changed")
+            return
+        found = self.net_scan(NET_SCAN_WINDOW)
+        if getattr(self, "_net_suppress_auto", False):
+            # 用户手动退出过：只扫描不自动申请，等他在「内网」页自己决定
+            self._emit("net_status", f"已退出内网（附近发现 {len(found)} 个内网）"
+                                     f"：可在「内网」页手动加入或自行建立")
+            self._emit("net_changed")
+            return
+        if found:
+            best = found[0]
+            self._emit("net_status", f"发现内网「{best.get('name')}」"
+                                     f"（{best.get('member_count')} 人），正在申请加入…")
+            try:
+                self.net_apply_join(best["nid"])
+            except Exception:
+                traceback.print_exc()
+                self.net_create()
+        else:
+            self.net_create()
+
+    def _net_tick(self):
+        now = now_ts()
+        if self.in_net():
+            if now - self._net_last_announce >= NET_ANNOUNCE_INTERVAL:
+                self._net_last_announce = now
+                self._net_announce()
+                self._net_sync()
+            for req in list(self.net_reqs.values()):
+                if req.get("state") == "pending":
+                    self._net_eval_req(req)
+            # 定期重播我的票，帮助掉线过的同学补齐
+            if now - self._net_last_vote_replay >= 60:
+                self._net_last_vote_replay = now
+                for rid, mv in list(self.net_my_votes.items()):
+                    req = self.net_reqs.get(rid)
+                    if req and req.get("state") == "pending":
+                        self._broadcast({"t": "net_join_vote", "req_id": rid, "nid": req.get("nid"),
+                                         "voter": self.uid, "voter_name": self.my_name,
+                                         "approve": mv.get("approve"), "ts": mv.get("ts")})
+            self._net_prune()
+        a = self.net_applying
+        if a:
+            if now - self._net_last_req >= NET_REQ_REBROADCAST:
+                self._net_last_req = now
+                self._net_join_req_broadcast()
+                self._emit("net_vote_changed")
+            if now > float(a.get("deadline") or 0):
+                self.net_applying = None
+                req = self.net_reqs.get(a.get("req_id"))
+                if req:
+                    req["state"] = "rejected"
+                    req["note"] = "投票超过 1 天，自动结束"
+                self._save_net()
+                self._emit("net_result", False, "入网申请超过 1 天仍未被通过，投票已结束")
+                self._emit("net_changed")
+        for nid in [k for k, v in self.net_nearby.items() if now - v["ts"] > NET_NEARBY_TTL]:
+            self.net_nearby.pop(nid, None)
+            self._emit("net_nearby_changed")
+
+    def _net_prune(self):
+        """清理过期数据：已结束的申请超过 7 天的丢掉（保留近期历史给「更多」页）。"""
+        cutoff = now_ts() - 7 * 86400
+        drop = [rid for rid, r in self.net_reqs.items()
+                if r.get("state") in ("approved", "rejected") and float(r.get("created_ts") or 0) < cutoff]
+        if drop:
+            for rid in drop:
+                self.net_reqs.pop(rid, None)
+                self.net_my_votes.pop(rid, None)
+            self._save_net()
 
     # ------------------------------------------------------------- 文件系统 --
     def cache_dir(self) -> Path:
@@ -1267,6 +2108,7 @@ class PeerCore:
 
     def send_file_to_group(self, path: Path, gid: str):
         """把本机文件发送到群：入库 + 广播 file_pub，组内成员自动下载。"""
+        self._require_net()
         path = Path(path)
         if not path.is_file():
             raise ValueError("文件不存在")
@@ -1319,6 +2161,8 @@ class PeerCore:
         gid = msg.get("gid")
         if gid not in self.groups:
             return
+        if not self._member_ok(msg.get("uid")):
+            return   # 内网外的机器发来的文件公告忽略
         f = msg.get("file", {})
         fid = f.get("id")
         if not fid:
@@ -1354,6 +2198,8 @@ class PeerCore:
     def _on_sync_req(self, msg: dict):
         gid = msg.get("gid")
         if not gid:
+            return
+        if not self._member_ok(msg.get("uid")):
             return
         for fid, r in self.index.items():
             if gid in r.get("groups", []) and self.has_file(fid):
@@ -1806,6 +2652,10 @@ class App:
         self._nav = "chat"
         self._settings_dlg = None   # 当前打开的设置对话框（投票进度/结果转发给它）
         self.dm_windows = {}        # uid -> ChatWindow（双人私聊窗口）
+        # 内网准入 / 投票弹窗状态
+        self._vote_popup = None     # 鼠标靠近「投票」图标时出现的悬浮面板
+        self._vote_popup_job = None
+        self._vote_hide_job = None
 
         self._build_ui()
         self.core.start()
@@ -1814,6 +2664,7 @@ class App:
         self._refresh_groups_list()
         self._refresh_peers()
         self._rebuild_file_model_from_index()
+        self._update_vote_badge()
         self.root.after(100, self._poll_events)
         self.root.protocol("WM_DELETE_WINDOW", self._on_close)
 
@@ -1828,6 +2679,7 @@ class App:
 
         shell = tk.Frame(self.root, bg=P.bg)
         shell.pack(fill="both", expand=True)
+        self.shell = shell
 
         # ================= 第一栏：窄图标导航栏（微信 4.x 左侧） =================
         rail = tk.Frame(shell, width=64, bg=P.panel)
@@ -1839,13 +2691,25 @@ class App:
                         font=(FAMILY, 15, "bold"), width=2, pady=4)
         logo.pack(pady=(14, 12))
         self.rail_btns = {}
-        for key, icon, label in (("chat", "💬", "聊天"), ("log", "📋", "日志")):
+        for key, icon, label in (("chat", "💬", "聊天"), ("net", "📡", "内网"),
+                                 ("vote", "🗳", "投票"), ("more", "⋯", "更多"),
+                                 ("log", "📋", "日志")):
             b = tk.Frame(rail, bg=P.panel, cursor="hand2")
-            tk.Label(b, text=icon, bg=P.panel, font=(EMOJI, 16)).pack()
-            tk.Label(b, text=label, bg=P.panel, fg=P.sub, font=(FAMILY, 8)).pack()
+            ic = tk.Label(b, text=icon, bg=P.panel, font=(EMOJI, 16))
+            ic.pack()
+            tx = tk.Label(b, text=label, bg=P.panel, fg=P.sub, font=(FAMILY, 8))
+            tx.pack()
             b.pack(pady=3, ipadx=2)
             _bind_click(b, lambda e, k=key: self.switch_nav(k))
             self.rail_btns[key] = b
+            if key == "vote":
+                # 小红点：有待我投票的入网申请时出现，投完消失
+                self.vote_dot = tk.Canvas(b, width=11, height=11, bg=P.panel,
+                                          highlightthickness=0, bd=0)
+                self.vote_dot.create_oval(1, 1, 10, 10, fill=P.badge, outline=P.badge)
+                for w in (b, ic, tx):
+                    w.bind("<Enter>", self._on_vote_icon_enter, add="+")
+                    w.bind("<Leave>", self._on_vote_icon_leave, add="+")
         self._rail_pad = tk.Frame(rail, bg=P.panel)
         self._rail_pad.pack(fill="both", expand=True)
 
@@ -1942,6 +2806,7 @@ class App:
         # -- 视图容器 --
         self.viewbox = tk.Frame(self.right_main, bg=P.bg)
         self.viewbox.pack(fill="both", expand=True)
+        self.view_netgate = tk.Frame(self.viewbox, bg=P.bg)   # 未加入内网时的引导页
         self._build_view_empty()
         self._build_view_chat()
         self._build_view_files()
@@ -1974,6 +2839,137 @@ class App:
         self.log_text.pack(side="left", fill="both", expand=True)
         ls.pack(side="right", fill="y")
 
+        # ================= 内网 / 投票 / 更多 三个页面 =================
+        self._build_net_pages()
+
+    # ---------------------------------------------------------------- 内网页面 --
+    def _build_net_pages(self):
+        # ---------- 内网 ----------
+        self.right_net = tk.Frame(self.shell, bg=P.bg)
+        head = tk.Frame(self.right_net, bg=P.panel, height=48)
+        head.pack(fill="x")
+        head.pack_propagate(False)
+        tk.Label(head, text="内网", bg=P.panel, fg=P.text,
+                 font=(FAMILY, 13, "bold")).pack(side="left", padx=18)
+        self.net_status_lbl = tk.Label(head, text="", bg=P.panel, fg=P.sub, font=(FAMILY, 9))
+        self.net_status_lbl.pack(side="left", padx=6)
+        tk.Frame(self.right_net, bg=P.border).pack(fill="x")
+
+        body = tk.Frame(self.right_net, bg=P.bg)
+        body.pack(fill="both", expand=True, padx=16, pady=12)
+
+        # 我的内网信息卡
+        self.net_card = tk.Frame(body, bg=P.panel)
+        self.net_card.pack(fill="x")
+        self.net_title = tk.Label(self.net_card, text="", bg=P.panel, fg=P.text,
+                                  font=(FAMILY, 13, "bold"))
+        self.net_title.pack(anchor="w", padx=16, pady=(12, 2))
+        self.net_info = tk.Label(self.net_card, text="", bg=P.panel, fg=P.sub,
+                                 font=(FAMILY, 9), justify="left")
+        self.net_info.pack(anchor="w", padx=16)
+        nbar = tk.Frame(self.net_card, bg=P.panel)
+        nbar.pack(fill="x", padx=16, pady=(10, 12))
+        self.net_btn_rescan = self._flat_btn(nbar, "重新扫描附近内网", self._on_net_scan)
+        self.net_btn_rescan.pack(side="left", padx=(0, 8))
+        self.net_btn_create = self._flat_btn(nbar, "自行建立内网", self._on_net_create)
+        self.net_btn_create.pack(side="left", padx=(0, 8))
+        self.net_btn_rename = self._flat_btn(nbar, "重命名", self._on_net_rename)
+        self.net_btn_rename.pack(side="left", padx=(0, 8))
+        self.net_btn_leave = self._flat_btn(nbar, "退出内网", self._on_net_leave)
+        self.net_btn_leave.pack(side="left")
+
+        # 成员登记表（物理地址）
+        tk.Label(body, text="成员登记表（物理地址 / 内网 IP）", bg=P.bg, fg=P.text,
+                 font=(FAMILY, 11, "bold")).pack(anchor="w", pady=(16, 6))
+        style = ttk.Style(self.root)
+        try:
+            style.configure("Net.Treeview", rowheight=30, font=(FAMILY, 10),
+                            background=P.panel, fieldbackground=P.panel)
+            style.configure("Net.Treeview.Heading", font=(FAMILY, 10, "bold"),
+                            background=P.panel, foreground=P.sub)
+            style.map("Net.Treeview", background=[("selected", P.selected)],
+                      foreground=[("selected", P.text)])
+        except Exception:
+            pass
+        cols = ("name", "mac", "ip", "joined", "role")
+        self.net_tree = ttk.Treeview(body, columns=cols, show="headings",
+                                     style="Net.Treeview", height=7)
+        for c, t, w in (("name", "名字", 150), ("mac", "物理地址（MAC）", 190),
+                        ("ip", "内网 IP", 140), ("joined", "加入时间", 140),
+                        ("role", "角色", 90)):
+            self.net_tree.heading(c, text=t)
+            self.net_tree.column(c, width=w, anchor="w")
+        self.net_tree.pack(fill="both", expand=True)
+
+        # 附近的内网
+        tk.Label(body, text="附近的内网（自动扫描发现）", bg=P.bg, fg=P.text,
+                 font=(FAMILY, 11, "bold")).pack(anchor="w", pady=(14, 6))
+        ncols = ("name", "nid", "founder", "count")
+        self.nearby_tree = ttk.Treeview(body, columns=ncols, show="headings",
+                                        style="Net.Treeview", height=5)
+        for c, t, w in (("name", "内网名称", 220), ("nid", "内网编号", 110),
+                        ("founder", "发起者物理地址", 190), ("count", "成员数", 90)):
+            self.nearby_tree.heading(c, text=t)
+            self.nearby_tree.column(c, width=w, anchor="w")
+        self.nearby_tree.pack(fill="both", expand=True, pady=(0, 6))
+        nbar2 = tk.Frame(body, bg=P.bg)
+        nbar2.pack(fill="x")
+        self._flat_btn(nbar2, "申请加入所选内网", self._on_net_apply_selected).pack(side="left")
+        self.net_apply_lbl = tk.Label(nbar2, text="", bg=P.bg, fg=P.sub, font=(FAMILY, 9))
+        self.net_apply_lbl.pack(side="left", padx=10)
+
+        # ---------- 投票（统一收纳） ----------
+        self.right_vote = tk.Frame(self.shell, bg=P.bg)
+        vhead = tk.Frame(self.right_vote, bg=P.panel, height=48)
+        vhead.pack(fill="x")
+        vhead.pack_propagate(False)
+        tk.Label(vhead, text="投票", bg=P.panel, fg=P.text,
+                 font=(FAMILY, 13, "bold")).pack(side="left", padx=18)
+        tk.Label(vhead, text="入网申请投票统一在这里处理（可弃权；投出后 5 分钟内可改票）",
+                 bg=P.panel, fg=P.sub, font=(FAMILY, 9)).pack(side="left")
+        tk.Frame(self.right_vote, bg=P.border).pack(fill="x")
+        self.vote_scroll = ScrollFrame(self.right_vote, P.bg)
+        self.vote_scroll.pack(fill="both", expand=True, padx=16, pady=12)
+        self.vote_inner = self.vote_scroll.inner
+
+        # ---------- 更多（投票历史 / 附近内网 / 工具） ----------
+        self.right_more = tk.Frame(self.shell, bg=P.bg)
+        mhead = tk.Frame(self.right_more, bg=P.panel, height=48)
+        mhead.pack(fill="x")
+        mhead.pack_propagate(False)
+        tk.Label(mhead, text="更多", bg=P.panel, fg=P.text,
+                 font=(FAMILY, 13, "bold")).pack(side="left", padx=18)
+        tk.Frame(self.right_more, bg=P.border).pack(fill="x")
+        mbody = tk.Frame(self.right_more, bg=P.bg)
+        mbody.pack(fill="both", expand=True, padx=16, pady=12)
+        tk.Label(mbody, text="投票历史（5 分钟内且投票未结束时可改票）", bg=P.bg, fg=P.text,
+                 font=(FAMILY, 11, "bold")).pack(anchor="w", pady=(0, 6))
+        hcols = ("ts", "who", "mac", "my", "state", "note")
+        self.hist_tree = ttk.Treeview(mbody, columns=hcols, show="headings",
+                                      style="Net.Treeview", height=9)
+        for c, t, w in (("ts", "时间", 130), ("who", "申请人", 110), ("mac", "物理地址", 180),
+                        ("my", "我的投票", 100), ("state", "状态", 100), ("note", "说明", 320)):
+            self.hist_tree.heading(c, text=t)
+            self.hist_tree.column(c, width=w, anchor="w")
+        self.hist_tree.pack(fill="both", expand=True)
+        hbar = tk.Frame(mbody, bg=P.bg)
+        hbar.pack(fill="x", pady=(6, 14))
+        self._flat_btn(hbar, "更改所选投票", self._on_change_vote_selected).pack(side="left")
+        tk.Label(hbar, text="（只有 5 分钟内、且投票还没结束的才能改）", bg=P.bg, fg=P.sub,
+                 font=(FAMILY, 8)).pack(side="left", padx=8)
+        tk.Label(mbody, text="工具", bg=P.bg, fg=P.text,
+                 font=(FAMILY, 11, "bold")).pack(anchor="w", pady=(0, 6))
+        tbar = tk.Frame(mbody, bg=P.bg)
+        tbar.pack(fill="x")
+        self._flat_btn(tbar, "打开数据目录", self._open_data_dir).pack(side="left", padx=(0, 8))
+        self._flat_btn(tbar, "检查更新", self._on_manual_update).pack(side="left", padx=(0, 8))
+        self._flat_btn(tbar, "设置", self._open_settings).pack(side="left")
+
+    def _flat_btn(self, parent, text, cmd):
+        return tk.Button(parent, text=text, bg=P.panel, fg=P.accent, activebackground=P.selected,
+                         activeforeground=P.accent, relief="solid", bd=1, cursor="hand2",
+                         font=(FAMILY, 9), padx=10, pady=3, command=cmd)
+
     def _apply_win11_rounding(self):
         """Win11 原生圆角窗口（DWM）。"""
         if not OS_IS_WINDOWS:
@@ -1996,12 +2992,23 @@ class App:
                     c.configure(bg=bg)
                 except Exception:
                     pass
-        if key == "log":
-            self.right_main.pack_forget()
-            self.right_log.pack(side="left", fill="both", expand=True)
-        else:
-            self.right_log.pack_forget()
-            self.right_main.pack(side="left", fill="both", expand=True)
+        for frame in (self.right_main, self.right_net, self.right_vote,
+                      self.right_more, self.right_log):
+            try:
+                frame.pack_forget()
+            except Exception:
+                pass
+        target = {"chat": self.right_main, "net": self.right_net, "vote": self.right_vote,
+                  "more": self.right_more, "log": self.right_log}.get(key, self.right_main)
+        target.pack(side="left", fill="both", expand=True)
+        if key == "net":
+            self._render_net_page()
+        elif key == "vote":
+            self._render_vote_page()
+        elif key == "more":
+            self._render_more_page()
+        elif key == "chat":
+            self._raise_view(self._chip_cur)
 
     def _set_chip(self, key: str):
         self._chip_cur = key
@@ -2015,6 +3022,10 @@ class App:
     def _raise_view(self, key: str):
         for v in self.viewbox.winfo_children():
             v.pack_forget()
+        if not self.core.in_net():
+            self._render_netgate()
+            self.view_netgate.pack(fill="both", expand=True)
+            return
         if not self.current_gid:
             self.view_empty.pack(fill="both", expand=True)
             return
@@ -2027,6 +3038,450 @@ class App:
         elif key == "members":
             self._render_members()
             self.view_members.pack(fill="both", expand=True)
+
+    # ------------------------------------------------ 未入网时的引导视图 --
+    def _render_netgate(self):
+        for w in self.view_netgate.winfo_children():
+            w.destroy()
+        inner = tk.Frame(self.view_netgate, bg=P.bg)
+        inner.place(relx=0.5, rely=0.42, anchor="center")
+        tk.Label(inner, text="📡", bg=P.bg, font=(EMOJI, 44)).pack()
+        head = ("正在扫描附近的内网…" if not self.core.net_applying
+                else "已提交入网申请，等待成员投票…")
+        tk.Label(inner, text=head, bg=P.bg, fg=P.text, font=(FAMILY, 13, "bold")).pack(pady=(8, 4))
+        target = (self.core.net_applying or {}).get("name") or ""
+        detail = (f"目标内网「{target}」· 投票 1 天内有效" if target
+                  else "发现附近内网会自动申请加入；没有则自动建立自己的内网")
+        tk.Label(inner, text=detail, bg=P.bg, fg=P.sub, font=(FAMILY, 10)).pack()
+        cards = self.core.net_open_votes()
+        if cards:
+            tk.Label(inner, text=f"当前投票：{len(cards)} 项（左侧「投票」图标可查看）",
+                     bg=P.bg, fg=P.badge, font=(FAMILY, 10, "bold")).pack(pady=(10, 0))
+        tk.Button(inner, text="打开内网页面", bg=P.accent, fg="#ffffff",
+                  activebackground=P.accent_hv, activeforeground="#ffffff",
+                  relief="flat", bd=0, cursor="hand2",
+                  font=(FAMILY, 11, "bold"), padx=22, pady=6,
+                  command=lambda: self.switch_nav("net")).pack(pady=14)
+
+    # ------------------------------------------------ 内网页面 --
+    def _render_net_page(self):
+        v = self.core.net_view()
+        if v.get("in_net"):
+            self.net_title.configure(text=f"我的内网：{v['name']}（编号 {v['nid']}）")
+            role = "发起者" if v.get("is_founder") else "成员"
+            self.net_info.configure(
+                text=(f"成员 {v['member_count']} 人（当前在线 {v['online_count']} 人） · 我是{role} · "
+                      f"我的物理地址 {v['my_mac_pretty']}"))
+            self.net_btn_create.configure(state="disabled")
+            self.net_btn_leave.configure(state="normal")
+            self.net_btn_rename.configure(state="normal" if v.get("is_founder") else "disabled")
+        else:
+            a = v.get("applying")
+            if a:
+                self.net_title.configure(text=f"正在申请加入内网「{a.get('name') or a.get('nid')}」")
+                self.net_info.configure(
+                    text="已提交入网申请，等待成员投票（有效期 1 天）。投票进度见左侧「投票」图标。")
+            else:
+                self.net_title.configure(text="尚未加入任何内网")
+                self.net_info.configure(
+                    text="程序会自动扫描附近的内网：有就申请加入，没有就自行建立一个。")
+            self.net_btn_create.configure(state="normal")
+            self.net_btn_leave.configure(state="disabled")
+            self.net_btn_rename.configure(state="disabled")
+        # 成员登记表（物理地址 + 内网 IP）
+        self.net_tree.delete(*self.net_tree.get_children())
+        for m in v.get("members", []):
+            me = "（我）" if m.get("mac") == self.cfg.get("uid") else ""
+            self.net_tree.insert("", "end", values=(
+                f"{m.get('name', '?')}{me}", fmt_mac(m.get("mac")),
+                m.get("ip") or "-", fmt_time(m.get("joined_ts") or 0),
+                "发起者" if m.get("founder") else "成员"))
+        # 附近的内网
+        self.nearby_tree.delete(*self.nearby_tree.get_children())
+        for n in v.get("nearby", []):
+            try:
+                self.nearby_tree.insert("", "end", iid=n["nid"], values=(
+                    n.get("name"), n.get("nid"), fmt_mac(n.get("founder_mac")),
+                    n.get("member_count")))
+            except Exception:
+                pass
+        if v.get("in_net") and v.get("nearby"):
+            self.net_apply_lbl.configure(text="（已在其他内网中，不能重复申请）")
+        elif not v.get("nearby"):
+            self.net_apply_lbl.configure(text="附近暂未发现其它内网")
+
+    # ------------------------------------------------ 投票卡片（弹窗与页面共用）--
+    @staticmethod
+    def _fmt_remain(sec) -> str:
+        sec = int(max(0, sec or 0))
+        if sec >= 86400:
+            return f"{sec // 86400} 天 {sec % 86400 // 3600} 小时"
+        if sec >= 3600:
+            return f"{sec // 3600} 小时 {sec % 3600 // 60} 分"
+        if sec >= 60:
+            return f"{sec // 60} 分 {sec % 60} 秒"
+        return f"{sec} 秒"
+
+    def _render_vote_cards(self, parent, cards):
+        box = tk.Frame(parent, bg=P.bg)
+        box.pack(fill="x")
+        if not cards:
+            tk.Label(box, text="暂无待处理的投票", bg=P.bg, fg=P.sub,
+                     font=(FAMILY, 10)).pack(anchor="w", pady=6)
+            return box
+        for c in cards:
+            self._vote_card_widget(box, c)
+        return box
+
+    def _vote_card_widget(self, parent, c: dict):
+        card = tk.Frame(parent, bg=P.panel)
+        card.pack(fill="x", pady=6)
+        top = tk.Frame(card, bg=P.panel)
+        top.pack(fill="x", padx=14, pady=(10, 4))
+        tk.Label(top, text=f"「{c['name']}」申请加入内网", bg=P.panel, fg=P.text,
+                 font=(FAMILY, 11, "bold")).pack(side="left")
+        state_txt = {"pending": "投票中", "approved": "已通过",
+                     "rejected": "未通过"}.get(c["state"], c["state"])
+        color = P.accent if c["state"] == "approved" else (
+            P.badge if c["state"] == "rejected" else P.sub)
+        tk.Label(top, text=state_txt, bg=P.panel, fg=color,
+                 font=(FAMILY, 9, "bold")).pack(side="left", padx=8)
+        if c.get("from_me"):
+            tk.Label(top, text="（我自己）", bg=P.panel, fg=P.sub,
+                     font=(FAMILY, 9)).pack(side="left")
+        tk.Label(card, text=(f"物理地址 {c['mac_pretty']} · 内网 IP {c['ip'] or '-'} · "
+                             f"同意 {c['approvals']}/{c['voters']} 人（需 {c['need']} 票） · "
+                             f"弃权 {c['abstains']} · 反对 {c['rejects']}"),
+                 bg=P.panel, fg=P.sub, font=(FAMILY, 9)).pack(anchor="w", padx=14)
+        tk.Label(card, text=f"规则：{c['desc']}", bg=P.panel, fg=P.sub,
+                 font=(FAMILY, 8)).pack(anchor="w", padx=14, pady=(2, 0))
+        if c["state"] == "pending":
+            tk.Label(card, text=f"投票剩余 {self._fmt_remain(c.get('remain'))}",
+                     bg=P.panel, fg=P.sub, font=(FAMILY, 8)).pack(anchor="w", padx=14, pady=(2, 6))
+        bar = tk.Frame(card, bg=P.panel)
+        bar.pack(fill="x", padx=14, pady=(4, 12))
+        can_vote = (c["state"] == "pending" and not c.get("from_me")
+                    and self.core.in_net() and c["req_id"] in self.core.net_reqs)
+        if can_vote:
+            if not c["voted"]:
+                self._vote_btn(bar, "同意", True, c, P.accent, "#ffffff")
+                self._vote_btn(bar, "拒绝", False, c, P.panel, P.badge)
+                self._vote_btn(bar, "弃权", None, c, P.panel, P.sub)
+            else:
+                cur = {True: "同意", False: "拒绝", None: "弃权"}.get(c["my_choice"], "已投票")
+                tk.Label(bar, text=f"我已投：{cur}", bg=P.panel, fg=P.text,
+                         font=(FAMILY, 9, "bold")).pack(side="left", padx=(0, 10))
+                if (c.get("change_left") or 0) > 0:
+                    tk.Label(bar, text=f"（{self._fmt_remain(c['change_left'])}内可改票）",
+                             bg=P.panel, fg=P.sub, font=(FAMILY, 8)).pack(side="left", padx=(0, 8))
+                    self._vote_btn(bar, "改同意", True, c, P.panel, P.accent)
+                    self._vote_btn(bar, "改拒绝", False, c, P.panel, P.badge)
+                    self._vote_btn(bar, "改弃权", None, c, P.panel, P.sub)
+                else:
+                    tk.Label(bar, text="（已超过 5 分钟，不能再改票）", bg=P.panel, fg=P.sub,
+                             font=(FAMILY, 8)).pack(side="left")
+        else:
+            tk.Label(bar, text=c.get("note") or "等待成员投票…", bg=P.panel, fg=P.sub,
+                     font=(FAMILY, 9), wraplength=560, justify="left").pack(anchor="w")
+        return card
+
+    def _vote_btn(self, parent, text, val, card, bg, fg):
+        tk.Button(parent, text=text, bg=bg, fg=fg, activebackground=P.hover,
+                  activeforeground=fg, relief="solid" if bg == P.panel else "flat", bd=1,
+                  cursor="hand2", font=(FAMILY, 9, "bold"), padx=12, pady=3,
+                  command=lambda: self._cast_vote(card["req_id"], val)).pack(side="left", padx=(0, 6))
+
+    def _cast_vote(self, req_id, val):
+        try:
+            self.core.net_cast_vote(req_id, val)
+        except Exception as e:
+            messagebox.showinfo("投票", str(e), parent=self.root)
+            return
+        self._update_vote_badge()
+        if self._nav == "vote":
+            self._render_vote_page()
+        elif self._nav == "net":
+            self._render_net_page()
+        self._refresh_vote_popup_content()
+
+    # ------------------------------------------------ 投票页面 --
+    def _render_vote_page(self):
+        parent = self.vote_inner
+        for w in parent.winfo_children():
+            w.destroy()
+        cards = self.core.net_pending_for_me()
+        tk.Label(parent, text=f"待我投票（{len(cards)}）", bg=P.bg, fg=P.text,
+                 font=(FAMILY, 11, "bold")).pack(anchor="w")
+        self._render_vote_cards(parent, cards)
+        opened = [c for c in self.core.net_open_votes()
+                  if c["req_id"] not in {x["req_id"] for x in cards}]
+        if opened:
+            tk.Label(parent, text=f"其它进行中的投票（{len(opened)}）", bg=P.bg, fg=P.text,
+                     font=(FAMILY, 11, "bold")).pack(anchor="w", pady=(16, 0))
+            self._render_vote_cards(parent, opened)
+        a = self.core.net_applying
+        if a:
+            tk.Label(parent, text="我发起的入网申请", bg=P.bg, fg=P.text,
+                     font=(FAMILY, 11, "bold")).pack(anchor="w", pady=(16, 0))
+            mine = [c for c in self.core.net_open_votes() if c["req_id"] == a.get("req_id")]
+            self._render_vote_cards(parent, mine)
+            self._flat_btn(parent, "撤回申请", self._on_net_cancel_apply).pack(anchor="w", pady=8)
+        tk.Label(parent, text="说明：可弃权；投出后 5 分钟内可改票；一次投票有效期为 1 天，"
+                              "过期视为投票结束。历史投票在左侧「更多」里查看。",
+                 bg=P.bg, fg=P.sub, font=(FAMILY, 9), justify="left", wraplength=760
+                 ).pack(anchor="w", pady=(16, 0))
+
+    # ------------------------------------------------ 更多页面 --
+    def _render_more_page(self):
+        self.hist_tree.delete(*self.hist_tree.get_children())
+        for c in self.core.net_vote_history():
+            my = {True: "同意", False: "拒绝", None: "弃权"}.get(c["my_choice"], "未投票")
+            if c.get("can_change"):
+                my += "（可改）"
+            state = {"pending": "投票中", "approved": "已通过",
+                     "rejected": "未通过"}.get(c["state"], c["state"])
+            note = c.get("note") or (f"剩余 {self._fmt_remain(c.get('remain'))}"
+                                     if c["state"] == "pending" else "")
+            try:
+                self.hist_tree.insert("", "end", iid=c["req_id"], values=(
+                    fmt_time(c["created_ts"]), c["name"], c["mac_pretty"], my, state, note))
+            except Exception:
+                pass
+
+    def _on_change_vote_selected(self):
+        sel = self.hist_tree.selection()
+        if not sel:
+            messagebox.showinfo("提示", "请先在投票历史里选一条记录", parent=self.root)
+            return
+        card = next((c for c in self.core.net_vote_history() if c["req_id"] == sel[0]), None)
+        if not card:
+            return
+        if not card.get("can_change"):
+            messagebox.showinfo("提示", "这条投票不能改了：只有投票未结束、且投出后 5 分钟内的才能改。",
+                                parent=self.root)
+            return
+        dlg = tk.Toplevel(self.root)
+        dlg.title("更改投票")
+        dlg.configure(bg=P.panel)
+        dlg.resizable(False, False)
+        dlg.transient(self.root)
+        dlg.grab_set()
+        body = tk.Frame(dlg, bg=P.panel, padx=20, pady=16)
+        body.pack(fill="both", expand=True)
+        tk.Label(body, text=f"「{card['name']}」入网申请", bg=P.panel, fg=P.text,
+                 font=(FAMILY, 11, "bold")).pack(anchor="w")
+        tk.Label(body, text=f"物理地址 {card['mac_pretty']} · 当前我的投票："
+                            f"{ {True: '同意', False: '拒绝', None: '弃权'}.get(card['my_choice'], '未投票') }"
+                            f"（还剩 {self._fmt_remain(card['change_left'])} 可改）",
+                 bg=P.panel, fg=P.sub, font=(FAMILY, 9)).pack(anchor="w", pady=(6, 12))
+        row = tk.Frame(body, bg=P.panel)
+        row.pack(fill="x")
+        for text, val, bg, fg in (("同意", True, P.accent, "#ffffff"),
+                                  ("拒绝", False, P.panel, P.badge),
+                                  ("弃权", None, P.panel, P.sub)):
+            tk.Button(row, text=text, bg=bg, fg=fg, activebackground=P.hover,
+                      relief="solid" if bg == P.panel else "flat", bd=1, cursor="hand2",
+                      font=(FAMILY, 10, "bold"), padx=14, pady=4,
+                      command=lambda v=val: (self._cast_vote(card["req_id"], v),
+                                             dlg.destroy())).pack(side="left", padx=(0, 8))
+        tk.Button(row, text="取消", bg=P.panel, fg=P.sub, relief="flat", bd=0, cursor="hand2",
+                  font=(FAMILY, 10), command=dlg.destroy).pack(side="left", padx=8)
+        dlg.update_idletasks()
+        x = self.root.winfo_rootx() + (self.root.winfo_width() - dlg.winfo_reqwidth()) // 2
+        y = self.root.winfo_rooty() + (self.root.winfo_height() - dlg.winfo_reqheight()) // 3
+        dlg.geometry(f"+{max(x, 0)}+{max(y, 0)}")
+
+    # ------------------------------------------------ 小红点 + 悬停弹窗 --
+    def _update_vote_badge(self):
+        try:
+            n = len(self.core.net_pending_for_me())
+            if n > 0:
+                self.vote_dot.place(relx=1.0, x=-3, y=1, anchor="ne")
+            else:
+                self.vote_dot.place_forget()
+        except Exception:
+            pass
+
+    def _on_vote_icon_enter(self, _e=None):
+        self._cancel_hide_job()
+        if self._vote_popup_job:
+            try:
+                self.root.after_cancel(self._vote_popup_job)
+            except Exception:
+                pass
+        self._vote_popup_job = self.root.after(200, self._show_vote_popup)
+
+    def _on_vote_icon_leave(self, _e=None):
+        self._schedule_hide_job()
+
+    def _schedule_hide_job(self):
+        self._cancel_hide_job()
+        self._vote_hide_job = self.root.after(450, self._hide_vote_popup)
+
+    def _cancel_hide_job(self):
+        if self._vote_hide_job:
+            try:
+                self.root.after_cancel(self._vote_hide_job)
+            except Exception:
+                pass
+            self._vote_hide_job = None
+
+    def _show_vote_popup(self):
+        self._vote_popup_job = None
+        if not self.root.winfo_exists():
+            return
+        if self._vote_popup and self._vote_popup.winfo_exists():
+            self._refresh_vote_popup_content()
+            return
+        top = tk.Toplevel(self.root)
+        top.overrideredirect(True)
+        try:
+            top.attributes("-topmost", True)
+        except Exception:
+            pass
+        top.configure(bg=P.border)
+        outer = tk.Frame(top, bg=P.panel)
+        outer.pack(fill="both", expand=True, padx=1, pady=1)
+        head = tk.Frame(outer, bg=P.panel)
+        head.pack(fill="x", padx=12, pady=(10, 4))
+        tk.Label(head, text="投票", bg=P.panel, fg=P.text,
+                 font=(FAMILY, 11, "bold")).pack(side="left")
+        tk.Label(head, text="鼠标移开自动收起", bg=P.panel, fg=P.sub,
+                 font=(FAMILY, 8)).pack(side="left", padx=8)
+        self._vote_popup_body = tk.Frame(outer, bg=P.panel)
+        self._vote_popup_body.pack(fill="both", expand=True, padx=12)
+        tk.Button(outer, text="打开投票页面", bg=P.panel, fg=P.accent, activebackground=P.hover,
+                  relief="flat", bd=0, cursor="hand2", font=(FAMILY, 9),
+                  command=lambda: (self._hide_vote_popup(), self.switch_nav("vote"))
+                  ).pack(anchor="e", padx=12, pady=(4, 10))
+        top.bind("<Enter>", lambda e: self._cancel_hide_job())
+        top.bind("<Leave>", lambda e: self._schedule_hide_job())
+        self._vote_popup = top
+        self._refresh_vote_popup_content()
+        top.update_idletasks()
+        btn = self.rail_btns.get("vote")
+        x = (btn.winfo_rootx() + btn.winfo_width() + 6) if btn else 120
+        y = (btn.winfo_rooty() - 12) if btn else 220
+        w, h = top.winfo_reqwidth(), top.winfo_reqheight()
+        sw, sh = self.root.winfo_screenwidth(), self.root.winfo_screenheight()
+        if x + w > sw - 20:
+            x = max(20, sw - w - 20)
+        if y + h > sh - 40:
+            y = max(20, sh - h - 60)
+        top.geometry(f"+{int(x)}+{int(y)}")
+
+    def _refresh_vote_popup_content(self):
+        if not (self._vote_popup and self._vote_popup.winfo_exists()):
+            return
+        body = self._vote_popup_body
+        for w in body.winfo_children():
+            w.destroy()
+        cards = self.core.net_pending_for_me()
+        if not cards:
+            tk.Label(body, text="暂无待我投票的入网申请", bg=P.panel, fg=P.sub,
+                     font=(FAMILY, 10)).pack(anchor="w", pady=10)
+            return
+        for c in cards:
+            self._vote_card_widget(body, c)
+
+    def _hide_vote_popup(self):
+        self._vote_hide_job = None
+        if self._vote_popup and self._vote_popup.winfo_exists():
+            self._vote_popup.destroy()
+        self._vote_popup = None
+
+    # ------------------------------------------------ 内网操作 --
+    def _on_net_scan(self):
+        self.net_apply_lbl.configure(text="正在扫描附近的内网…")
+        threading.Thread(target=self.core._safe(lambda: self.core.net_scan(NET_SCAN_WINDOW)),
+                         daemon=True).start()
+        self.root.after(1500, lambda: self._render_net_page() if self._nav == "net" else None)
+
+    def _on_net_create(self):
+        if self.core.in_net():
+            return
+        name = simpledialog.askstring("建立内网", "给内网起个名字（如：高三（2）班内网）",
+                                      initialvalue=f"{socket.gethostname()} 的内网",
+                                      parent=self.root)
+        if name is None:
+            return
+        try:
+            self.core.net_create(name.strip())
+        except Exception as e:
+            messagebox.showerror("建立内网失败", str(e), parent=self.root)
+
+    def _on_net_apply_selected(self):
+        if self.core.in_net():
+            messagebox.showinfo("提示", "你已经在内网里了", parent=self.root)
+            return
+        sel = self.nearby_tree.selection()
+        if not sel:
+            messagebox.showinfo("提示", "请先在下面选择要加入的内网（可先「重新扫描」）", parent=self.root)
+            return
+        try:
+            self.core.net_apply_join(sel[0])
+        except Exception as e:
+            messagebox.showerror("申请失败", str(e), parent=self.root)
+
+    def _on_net_leave(self):
+        if not self.core.in_net():
+            return
+        v = self.core.net_view()
+        if messagebox.askyesno("退出内网",
+                               f"确定退出内网「{v['name']}」吗？\n"
+                               "退出后你会重新扫描附近内网（可能被要求重新投票加入）。",
+                               parent=self.root):
+            self.core.net_leave()
+
+    def _on_net_rename(self):
+        if not self.core.in_net():
+            return
+        v = self.core.net_view()
+        name = simpledialog.askstring("重命名内网", "新的内网名称：",
+                                      initialvalue=v.get("name", ""), parent=self.root)
+        if not name:
+            return
+        try:
+            self.core.net_rename(name.strip())
+        except Exception as e:
+            messagebox.showerror("重命名失败", str(e), parent=self.root)
+
+    def _on_net_cancel_apply(self):
+        self.core.net_cancel_apply()
+
+    # ------------------------------------------------ 内网事件 --
+    def _on_net_changed(self):
+        try:
+            self._update_vote_badge()
+            if self._nav == "net":
+                self._render_net_page()
+            elif self._nav == "vote":
+                self._render_vote_page()
+            elif self._nav == "more":
+                self._render_more_page()
+            self._refresh_peers()
+            if self._nav == "chat":
+                self._raise_view(self._chip_cur)
+        except Exception:
+            traceback.print_exc()
+
+    def _on_net_vote_changed(self):
+        self._update_vote_badge()
+        if self._nav == "vote":
+            self._render_vote_page()
+        elif self._nav == "net":
+            self._render_net_page()
+        self._refresh_vote_popup_content()
+
+    def _on_net_result(self, ok: bool, text: str):
+        self._append_log(f"[{fmt_time(now_ts())}] 内网: {text}")
+        try:
+            self.notifier.notify("内网", text)
+        except Exception:
+            pass
+        if ok:
+            messagebox.showinfo("内网", text, parent=self.root)
+        self._on_net_changed()
 
     # ------------------------------------------------ 空状态视图 --
     def _build_view_empty(self):
@@ -2316,6 +3771,22 @@ class App:
                     self._on_ev_dm(ev[1])
                 elif kind == "dm_sent":
                     self._on_ev_dm_sent(ev[1])
+                # ---------------- 内网（准入投票） ----------------
+                elif kind == "net_changed":
+                    self._on_net_changed()
+                elif kind == "net_vote_changed":
+                    self._on_net_vote_changed()
+                elif kind == "net_status":
+                    try:
+                        self.net_status_lbl.configure(text=str(ev[1])[:80])
+                    except Exception:
+                        pass
+                    self._append_log(f"[{fmt_time(now_ts())}] 内网: {ev[1]}")
+                elif kind == "net_nearby_changed":
+                    if self._nav == "net":
+                        self._render_net_page()
+                elif kind == "net_result":
+                    self._on_net_result(ev[1], ev[2])
         except queue.Empty:
             pass
         self.root.after(100, self._poll_events)
@@ -2565,9 +4036,17 @@ class App:
         self._set_chip(getattr(self, "_chip_cur", "chat"))
 
     def _on_create_group(self):
+        if not self.core.in_net():
+            messagebox.showinfo("提示", "请先加入或建立一个内网，再创建群组。", parent=self.root)
+            self.switch_nav("net")
+            return
         CreateGroupDialog(self)
 
     def _on_join_group(self):
+        if not self.core.in_net():
+            messagebox.showinfo("提示", "请先加入或建立一个内网，再加入群组。", parent=self.root)
+            self.switch_nav("net")
+            return
         JoinDialog(self)
 
     def _on_leave_group(self):
@@ -2589,6 +4068,10 @@ class App:
         gid = self.current_gid
         if not gid:
             messagebox.showinfo("提示", "请先选择或创建一个群组", parent=self.root)
+            return
+        if not self.core.in_net():
+            messagebox.showinfo("提示", "还没有加入内网，无法发送消息。", parent=self.root)
+            self.switch_nav("net")
             return
         self.core.send_chat(gid, text)
         self.entry.delete(0, tk.END)
@@ -2721,8 +4204,12 @@ class App:
     def _refresh_peers(self):
         online = [p for p in self.core.peers.values()
                   if now_ts() - (p.get("ts") or 0) <= PRESENCE_TTL]
-        self.status_lbl.configure(text=f"在线用户 {len(online)} · v{APP_VERSION} · "
-                                       f"本机 {'、'.join(get_local_ips())}")
+        if self.core.in_net():
+            v = self.core.net_view()
+            net_txt = f"内网「{v['name']}」{v['member_count']} 人"
+        else:
+            net_txt = "未加入内网（正在扫描）"
+        self.status_lbl.configure(text=f"{net_txt} · 在线用户 {len(online)} · v{APP_VERSION}")
         if self.current_gid:
             self._update_group_header()
         for w in list(self.dm_windows.values()):
@@ -2733,6 +4220,10 @@ class App:
 
     # ---------------------------------------------------------------- 关闭 --
     def _on_close(self):
+        try:
+            self._hide_vote_popup()
+        except Exception:
+            pass
         self.core.stop()
         self.root.destroy()
 
@@ -2931,7 +4422,12 @@ class CreateGroupDialog(tk.Toplevel):
         if not name:
             messagebox.showinfo("提示", "请输入群组名称", parent=self)
             return
-        g = self.app.core.create_group(name)
+        try:
+            g = self.app.core.create_group(name)
+        except PermissionError as e:
+            messagebox.showinfo("提示", str(e), parent=self)
+            self.app.switch_nav("net")
+            return
         self.app._refresh_groups_list()
         self.app.select_gid(g["gid"])
         self.destroy()

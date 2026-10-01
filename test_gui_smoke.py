@@ -31,6 +31,8 @@ TESTDATA = ROOT / "_testdata_gui"
 os.environ["NEIWANG_DATA_DIR"] = str(TESTDATA)
 os.environ["NEIWANG_UDP_PORT"] = "45685"
 os.environ["NEIWANG_TCP_PORT"] = "45640"
+os.environ["NEIWANG_SCAN_WINDOW"] = "1"
+os.environ["NEIWANG_NET_ANNOUNCE"] = "2"
 os.environ["PYTHONDONTWRITEBYTECODE"] = "1"
 
 if TESTDATA.exists():
@@ -401,11 +403,21 @@ try:
 
     root = tk.Tk()
     app = M.App(root)
+
+    # 新逻辑：没入网之前程序是空的（群组不可用），所以先等自动建立内网
+    deadline = time.time() + 20
+    while time.time() < deadline and not app.core.in_net():
+        root.update()
+        time.sleep(0.1)
+    ok("GUI 启动后自动建立内网（记录物理地址）", app.core.in_net(),
+       app.core.net_view().get("my_mac_pretty"))
+
     g = app.core.create_group("冒烟测试群")
     app.select_gid(g["gid"])
     time.sleep(0.8)
     root.update()
     n_groups = len(app.core.my_groups())
+    ok("内网页面渲染正常", isinstance(app.core.net_view().get("members"), list))
 
     # 选「取消」后不应被永久屏蔽：手动检查 / 下次启动还能再提醒
     real_ask = M.messagebox.askyesnocancel

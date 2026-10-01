@@ -21,7 +21,9 @@
 
 - **零第三方依赖**：只用 `socket / threading / tkinter / hashlib / hmac / json / urllib / subprocess` 等标准库，把文件夹复制过去就能跑；
 - **无需服务器**：没有中心服务端，所有电脑平等互联，谁先建群谁就是群主电脑，其他人凭群号加入；
-- **界面仿微信 4.x 桌面版**：左侧窄图标栏（聊天 / 日志）+ 中间群组列表（搜索、未读红点、右键菜单）+ 右侧聊天气泡主区（微信绿、圆形头像、群文件、成员列表）；
+- **先入网再用**：局域网里的电脑先组成一个「**内网**」（登记每台电脑的物理地址，人多时新成员需成员投票通过），
+  没入网的电脑程序是空的——群组、聊天、文件都用不了；
+- **界面仿微信 4.x 桌面版**：左侧窄图标栏（聊天 / 内网 / 投票 / 更多 / 日志）+ 中间群组列表（搜索、未读红点、右键菜单）+ 右侧聊天气泡主区（微信绿、圆形头像、群文件、成员列表）；
 - **面向班级场景**：作业互传、通知广播、临时聊天，局域网内不需要外网也能用。
 
 ### 1.2 运行环境与依赖（重要，请先看这里）
@@ -60,9 +62,56 @@
 | 改名投票 | 每个人自选名字，**第一次改名自由**，之后需超过 5 名用户投票同意 |
 | 公共日志 | 「日志」页：全网公共日志，所有人可见、**只读** |
 | 检查更新 | 启动时自动检查，无网络或版本相同则静默；有新版本才弹窗提醒「新版本 —— v版本号」与更新内容，并由同目录的独立更新程序 `neiwang_update.py` 完成更新 |
+| 内网准入 | 登记每台电脑的**物理地址（MAC）**；没入网的电脑是空的。启动自动扫描：有内网就申请加入、没有就自行建立 |
+| 入网投票 | **≤5 人免投票**、**6–7 人全票通过**、**≥8 人超过 1/3**；可弃权、可改票、有效期 1 天 |
 | 系统通知 | 文件下载完成弹系统通知：`「qqq」群「AA」的「你好」下载完毕` |
 
-### 1.4 快速开始
+### 1.4 内网准入与入网投票（新）
+
+程序把同一个局域网里的电脑组成一个「**内网**」：**没被接纳的电脑，程序就是空的**（群组、聊天、文件都用不了）。
+每台电脑的**物理地址（MAC）**会登记在内网成员表里，登记表全网同步、人人可见。
+
+**启动时自动做的事**：
+
+1. 已经在内网里 → 直接广播自己的内网（带上物理地址与成员表）；
+2. 还没有内网 → 先**扫描**附近的内网（局域网 IP）：
+   - **扫描到** → 自动**申请加入**（内网人数超过 5 人时进入投票，规则见下）；
+   - **没扫描到** → **自行建立**一个内网，自己成为发起者。
+
+**入网投票门槛**（按约定规则）：
+
+| 内网现有成员 | 新成员加入需要 |
+| --- | --- |
+| **≤ 5 人** | 免投票，自动通过 |
+| **6 – 7 人** | **全票通过**（每位成员都要同意） |
+| **≥ 8 人** | 同意票**超过 1/3**（8 人需 3 票、9 人需 4 票、12 人需 5 票；1/3 规则不得少于 8 人） |
+
+**投票怎么进行**：
+
+- 所有入网申请**统一收在左侧「投票」图标**里：有待投票时图标出现**小红点**；
+- **鼠标靠近图标才弹出面板**（不会自动弹窗打扰人），点图标进入完整投票页；
+- 每项可选 **同意 / 拒绝 / 弃权**（弃权既不算同意、也不算反对）；
+- 投完后小红点消失；**投出后 5 分钟内可以改票**，超过 5 分钟锁定；
+- **一次投票有效期为 1 天**，超过 1 天视为投票结束（票数不够则申请失败，可重新申请）；
+- 投票历史在左侧「**更多**」页里查看（5 分钟内且投票未结束的，可在那里改票）；
+- **没有「自动同意」开关**：必须由人点，机器不会替用户同意。
+
+**其它细节**：
+
+- 成员表记录：名字、**物理地址**、内网 IP、加入时间、角色（发起者 / 成员）；
+- 离线的成员仍算成员：投票有效期内上线后照样能投（申请会持续重播，登记表会把待办投票同步给刚上线的电脑）；
+- **公共日志**里能看到「某某（物理地址 XX-XX-…）申请加入内网」的完整过程；
+- 手动**退出内网**后不会自动加回去（可在「内网」页手动申请其它内网或自行建立）；
+  退出会把自己从登记表移除，再想进来需要重新投票；
+- 发起者可在「内网」页**重命名**自己的内网。
+
+> 取不到网卡 MAC 的机器（例如部分虚拟机）会自动生成一个持久随机 ID 当物理地址用
+> （显示成 `RND-XXXX-XXXX-XXXX`），同样会被登记、同样参与投票。
+
+### 1.5 快速开始
+
+> **首次启动会自动组网**：程序扫描附近的内网——找到就申请加入（人多时需要成员投票），
+> 找不到就自己建一个；**加入内网之后**才会出现群组功能（详见 1.4 节）。
 
 1. 每台电脑安装 **Python 3.8+**（Windows 安装时记得勾选 *Add Python to PATH*）。
 2. 把整个文件夹复制到每台电脑（U 盘 / 网盘 / 共享文件夹都行，不需要放到同一路径）。
@@ -77,7 +126,7 @@
 
 > 建议：群号告诉大家，由一台电脑创建群组即可，所有加入者共享同一个群。
 
-### 1.5 改名投票规则
+### 1.6 改名投票规则
 
 - **第一次改名**：在「设置」里直接保存，立即生效，不需要任何人同意。
 - **第二次及以后**：点「保存名字」会向局域网广播投票请求，其他在线用户弹出
@@ -87,7 +136,7 @@
 - **防刷票**：同一台电脑对同一次投票只计一票；每次投票都有唯一编号，互不干扰。
 - 申请与通过结果都会写入公共日志，全员可见。
 
-### 1.6 双人私聊与离线保密转存
+### 1.7 双人私聊与离线保密转存
 
 **私聊入口**：群「成员」页点成员头像，或聊天区点对方头像 / 名字。
 
@@ -105,7 +154,7 @@
 > 说明：转存使用纯标准库流加密 + HMAC 做「机器级」保密与完整性校验（转存方用户无法在应用里查看）。
 > 如需抵抗「转存方直接翻磁盘」的更强保密，可升级为非对称加密。
 
-### 1.7 群文件分发策略
+### 1.8 群文件分发策略
 
 1. **发送人在线** → 接收者直接向发送人电脑**点对点下载**（SHA-256 校验，损坏自动重试）。
 2. **发送人离线** → 在「日志」里**公共询问**（全网可见、人人可看不可操作）：
@@ -113,7 +162,7 @@
    请求方自动向**第一个返回的 IP** 请求文件，全程无需两端用户操作。
 3. 加入群组时会自动同步该群文件列表，错过的文件会自动补下载。
 
-### 1.8 版本与更新机制
+### 1.9 版本与更新机制
 
 **更新是一个独立的程序**：主程序 `neiwang.py` 只负责「检查并提醒」，真正的更新由同目录的独立更新程序
 **`neiwang_update.py`** 完成（双击 `更新.bat`，或命令行 `python neiwang_update.py`）。
@@ -178,11 +227,12 @@
 
 > 提示：`update_url` / `update_repo` 这两个地址已默认指向上面的仓库。若你的默认分支是 `master` 而不是 `main`，请把代码（或 `config.json`）里的 `main` 改成 `master`。
 
-### 1.9 数据目录
+### 1.10 数据目录
 
 ```
 data/
 ├─ config.json          # 配置：名字、群组、端口、更新地址、改名投票设置
+├─ net.json             # 内网：我的内网信息、成员登记表（物理地址 / IP / 加入时间）、入网申请与我的投票
 ├─ index.json           # 文件索引（指纹 -> 文件名 / 发送人 / 群组）
 ├─ cache/<指纹>          # 文件内容缓存（也用于给别人提供下载）
 ├─ downloads/<群名>_<群号>/  # 自动下载的文件（按群分文件夹）
@@ -194,9 +244,15 @@ update_clone/           # 由独立更新程序 neiwang_update.py 取回的新�
 update.wenyi            # 版本清单：版本号 + 更新内容
 ```
 
-### 1.10 常见问题
+### 1.11 常见问题
 
 - **两台电脑互相看不见？** 确认在同一局域网同一网段；允许 Python 通过防火墙；确认路由器没开 AP 隔离。
+- **为什么点「创建群组」提示先加入内网？** 内网是准入层：没入网时程序是空的。启动后程序会自动扫描附近内网——
+  有就申请加入（人多时需要成员投票），没有就自己建一个；也可以到「内网」页手动申请或自行建立。
+- **左侧「投票」图标上的小红点是什么？** 有同学申请加入内网、需要你投票。鼠标移上去才会弹出面板
+  （不会自动打扰），投完小红点消失；投错了 5 分钟内可以在「投票」页或「更多」页改票。
+- **我的物理地址为什么显示成 `RND-XXXX-XXXX-XXXX`？** 说明这台机器取不到网卡 MAC（常见于虚拟机），
+  程序生成了一个持久随机 ID 当物理地址，一样会被登记、一样参与投票。
 - **端口被占用？** 程序会自动尝试 45431 之后的端口；UDP 45455 只用于广播发现。
 - **发送人关机后文件还能下吗？** 能——只要有其他同学下载过该文件并在线，就会自动从他那里取。
 - **退出群组会删文件吗？** 不会，已下载文件保留在本机。
@@ -205,17 +261,20 @@ update.wenyi            # 版本清单：版本号 + 更新内容
 - **更新失败怎么办？** 按取包方式排查：① 用 Git 方式的话，确认装了 Git（`git --version`）并配置了 `update_repo`；② 没装 Git 就在 `data/config.json` 里配置 `update_package`（ZIP 更新包的下载地址）；③ 以上都正常，再检查网络能否访问更新服务器 / 仓库。
 - **怎么干净退出？** 点窗口关闭按钮即可，所有状态自动保存。
 
-### 1.11 开发与测试
+### 1.12 开发与测试
 
 ```bash
-python test_protocol.py    # 无头协议测试：群聊、私聊、保密转存、文件下载、离线回退、改名投票
+python test_protocol.py    # 无头协议测试：入网、群聊、私聊、保密转存、文件下载、离线回退、改名投票
+python test_net.py         # 内网准入测试：物理地址登记、扫描/申请/自建、三种投票门槛、弃权、改票、超时、退出重入
+python test_ui_net.py      # 内网/投票界面断言：小红点、悬停弹窗、投票页、更多页历史、登记表
 python test_gui_smoke.py   # GUI 冒烟 + 更新检查 + 清单解析 + 独立更新程序的备份/回填/ZIP 更新测试
 ```
 
-- 测试会使用 `_testdata/`、`_testdata_gui/` 作为数据目录，不影响你的 `data/`；
-- 可用环境变量加速测试：`NEIWANG_PRES_INTERVAL`、`NEIWANG_PRES_TTL`、`NEIWANG_VOTE_NEED`、`NEIWANG_VOTE_WAIT`、`NEIWANG_DATA_DIR`、`NEIWANG_UPDATE_ROOT` 等。
+- 测试会使用 `_testdata/`、`_testdata_net/`、`_testdata_ui/`、`_testdata_gui/` 作为数据目录，不影响你的 `data/`；
+- 可用环境变量加速测试：`NEIWANG_PRES_INTERVAL`、`NEIWANG_PRES_TTL`、`NEIWANG_VOTE_NEED`、`NEIWANG_VOTE_WAIT`、
+  `NEIWANG_SCAN_WINDOW`、`NEIWANG_NET_VOTE_WINDOW`、`NEIWANG_NET_VOTE_CHANGE`、`NEIWANG_DATA_DIR`、`NEIWANG_UPDATE_ROOT` 等。
 
-### 1.12 联系方式
+### 1.13 联系方式
 
 漏洞、建议、功能需求都欢迎发邮件到 **3814859587@qq.com**。
 
@@ -268,9 +327,36 @@ python test_gui_smoke.py   # GUI 冒烟 + 更新检查 + 清单解析 + 独立�
 | 改名投票 | 每人自選名字，**第一次改名自由**，之後需超過 5 名使用者投票同意 |
 | 公共日誌 | 「日誌」頁：全網公共日誌，所有人可見、**唯讀** |
 | 檢查更新 | 啟動時自動檢查，無網路或版本相同則靜默；有新版本才彈窗提醒「新版本 —— v版本號」與更新內容，並由同目錄的獨立更新程式 `neiwang_update.py` 完成更新 |
+| 入網投票 | **≤5 人免投票**、**6–7 人全票通過**、**≥8 人超過 1/3**；可棄權、可改票、有效期 1 天 |
 | 系統通知 | 檔案下載完成彈系統通知：`「qqq」群「AA」的「你好」下載完畢` |
 
-### 2.4 快速開始
+### 2.4 內網准入與入網投票（新）
+
+程式會把同一個區域網路裡的電腦組成一個「**內網**」：**沒被接納的電腦，程式就是空的**
+（群組、聊天、檔案都不能用）。每台電腦的**物理位址（MAC）**會登記在成員表裡，全網同步、人人可見。
+
+**啟動時自動做的事**：已在内網 → 廣播自己；還沒有 → 先**掃描**附近的內網：
+掃到就自動**申請加入**，沒掃到就**自行建立**（自己成為發起者）。
+
+**入網投票門檻**：
+
+| 內網現有成員 | 新成員加入需要 |
+| --- | --- |
+| **≤ 5 人** | 免投票，自動通過 |
+| **6 – 7 人** | **全票通過** |
+| **≥ 8 人** | 同意票**超過 1/3**（8 人需 3 票、9 人需 4 票） |
+
+**投票方式**：所有入網申請統一收在左側「**投票**」圖示裡（有待投票時出現**小紅點**；
+**滑鼠靠近才彈出面板**）。每項可選 **同意 / 拒絕 / 棄權**；投完小紅點消失；
+**5 分鐘內可改票**；**一次投票有效期 1 天**，逾期視為結束；歷史投票在左側「**更多**」頁；
+**沒有「自動同意」**，必須由人來點。
+
+> 取不到網卡 MAC 的機器會自動產生持久隨機 ID 當物理位址（`RND-XXXX-XXXX-XXXX`），一樣會登記。
+
+### 2.5 快速開始
+
+> **首次啟動會自動組網**：掃描附近內網——找到就申請加入（人多時需成員投票），
+> 找不到就自己建立；**加入內網之後**才會出現群組功能（詳見 2.4 節）。
 
 1. 每台電腦安裝 **Python 3.8+**（Windows 安裝時記得勾選 *Add Python to PATH*）。
 2. 把整個資料夾複製到每台電腦（USB 隨身碟 / 雲端硬碟 / 共用資料夾都可以，不需要放在相同路徑）。
@@ -285,7 +371,7 @@ python test_gui_smoke.py   # GUI 冒烟 + 更新检查 + 清单解析 + 独立�
 
 > 建議：把群號告訴大家，由一台電腦建立群組即可，所有加入者共用同一個群組。
 
-### 2.5 改名投票規則
+### 2.6 改名投票規則
 
 - **第一次改名**：在「設定」中直接儲存，立即生效，不需要任何人同意。
 - **第二次及之後**：點「儲存名字」會向區域網路廣播投票請求，其他線上使用者會彈出
@@ -295,7 +381,7 @@ python test_gui_smoke.py   # GUI 冒烟 + 更新检查 + 清单解析 + 独立�
 - **防灌票**：同一台電腦對同一次投票只計一票；每次投票都有唯一編號，互不干擾。
 - 申請與通過結果都會寫入公共日誌，全員可見。
 
-### 2.6 雙人私聊與離線保密轉存
+### 2.7 雙人私聊與離線保密轉存
 
 **私聊入口**：群組「成員」頁點成員頭像，或聊天區點對方頭像 / 名字。
 
@@ -313,7 +399,7 @@ python test_gui_smoke.py   # GUI 冒烟 + 更新检查 + 清单解析 + 独立�
 > 說明：轉存使用純標準函式庫串流加密 + HMAC 做「機器級」保密與完整性校驗（轉存方使用者無法在應用程式裡查看）。
 > 如需抵抗「轉存方直接翻磁碟」的更強保密，可升級為非對稱加密。
 
-### 2.7 群組檔案分發策略
+### 2.8 群組檔案分發策略
 
 1. **傳送者在線** → 接收者直接向傳送者電腦**點對點下載**（SHA-256 校驗，損壞自動重試）。
 2. **傳送者離線** → 在「日誌」中**公共詢問**（全網可見、人人可看不可操作）：
@@ -321,7 +407,7 @@ python test_gui_smoke.py   # GUI 冒烟 + 更新检查 + 清单解析 + 独立�
    請求方自動向**第一個回應的 IP** 請求檔案，全程無需兩端使用者操作。
 3. 加入群組時會自動同步該群組檔案清單，錯過的檔案會自動補下載。
 
-### 2.8 版本與更新機制
+### 2.9 版本與更新機制
 
 **更新是一個獨立的程式**：主程式 `neiwang.py` 只負責「檢查並提醒」，真正的更新由同目錄的獨立更新程式
 **`neiwang_update.py`** 完成（雙擊 `更新.bat`，或命令列 `python neiwang_update.py`）。
@@ -387,7 +473,7 @@ python test_gui_smoke.py   # GUI 冒烟 + 更新检查 + 清单解析 + 独立�
 > 提示：`update_url` / `update_repo` 這兩個位址已預設指向上面的儲存庫。若你的預設分支是 `master` 而不是 `main`，
 > 請把程式碼（或 `config.json`）裡的 `main` 改成 `master`。
 
-### 2.9 資料目錄
+### 2.10 資料目錄
 
 ```
 data/
@@ -403,7 +489,7 @@ update_clone/           # 由獨立更新程式 neiwang_update.py 取回的新�
 update.wenyi            # 版本清單：版本號 + 更新內容
 ```
 
-### 2.10 常見問題
+### 2.11 常見問題
 
 - **兩台電腦互相看不見？** 確認在同一區域網路同一網段；允許 Python 通過防火牆；確認路由器沒開 AP 隔離。
 - **連接埠被占用？** 程式會自動嘗試 45431 之後的連接埠；UDP 45455 只用於廣播探索。
@@ -414,17 +500,19 @@ update.wenyi            # 版本清單：版本號 + 更新內容
 - **更新失敗怎麼辦？** 依取包方式排查：① 用 Git 方式的話，確認安裝了 Git（`git --version`）並設定了 `update_repo`；② 沒安裝 Git 就在 `data/config.json` 裡設定 `update_package`（ZIP 更新包的下載位址）；③ 以上都正常，再檢查網路能否連上更新伺服器 / 儲存庫。
 - **怎麼乾淨結束？** 點視窗關閉按鈕即可，所有狀態自動儲存。
 
-### 2.11 開發與測試
+### 2.12 開發與測試
 
 ```bash
-python test_protocol.py    # 無頭協定測試：群聊、私聊、保密轉存、檔案下載、離線回退、改名投票
+python test_protocol.py    # 無頭協定測試：入網、群聊、私聊、保密轉存、檔案下載、離線回退、改名投票
+python test_net.py         # 內網准入測試：物理位址登記、掃描/申請/自建、三種投票門檻、棄權、改票、逾時、退出重入
+python test_ui_net.py      # 內網/投票介面斷言：小紅點、懸停彈窗、投票頁、更多頁歷史、登記表
 python test_gui_smoke.py   # GUI 冒煙 + 更新檢查 + 清單解析 + 獨立更新程式的備份/回填/ZIP 更新測試
 ```
 
 - 測試會使用 `_testdata/`、`_testdata_gui/` 作為資料目錄，不影響你的 `data/`；
 - 可用環境變數加速測試：`NEIWANG_PRES_INTERVAL`、`NEIWANG_PRES_TTL`、`NEIWANG_VOTE_NEED`、`NEIWANG_VOTE_WAIT`、`NEIWANG_DATA_DIR`、`NEIWANG_UPDATE_ROOT` 等。
 
-### 2.12 聯絡方式
+### 2.13 聯絡方式
 
 漏洞、建議、功能需求都歡迎寄信到 **3814859587@qq.com**。
 
@@ -477,10 +565,39 @@ python test_gui_smoke.py   # GUI 冒煙 + 更新檢查 + 清單解析 + 獨立�
 | Резервный источник файлов | Если отправитель выключил компьютер, программа публично спрашивает в журнале — тот, у кого файл уже есть, отдаёт его |
 | Голосование за смену имени | Имя выбирается свободно; **первая смена — бесплатно**, дальше нужно больше 5 голосов «за» |
 | Общий журнал | Вкладка «Журнал»: общий журнал локальной сети, виден всем, **только для чтения** |
+| Приём в сеть | Реестр **физических адресов (MAC)**: без принятия в сеть программа пуста. При запуске — поиск соседних сетей: нашли → заявка, не нашли → создаём свою |
+| Голосование за вступление | **≤5 участников** — без голосования, **6–7** — единогласно, **≥8** — более 1/3; можно воздержаться и изменить голос |
 | Проверка обновлений | Проверяется автоматически при запуске; без сети или при той же версии — молча; окно появляется только при новой версии («Новая версия — v…» и список изменений), а само обновление выполняет отдельная программа `neiwang_update.py` из той же папки |
 | Системные уведомления | По завершении загрузки файла: `«qqq»群「AA」的「你好」下载完毕` |
 
-### 3.4 Быстрый старт
+### 3.4 Приём во «внутреннюю сеть» и голосование (новое)
+
+Программа объединяет компьютеры локальной сети во «**внутреннюю сеть**»: **пока вас не приняли,
+программа пуста** — группы, чат и файлы недоступны. **Физический адрес (MAC)** каждой машины
+заносится в общий реестр участников, который синхронизируется по всей сети.
+
+**Что происходит при запуске**: если вы уже в сети — рассылаете объявление; если нет — сначала
+**поиск** соседних сетей: нашли → автоматически **заявка на вступление**; не нашли → **создаёте свою**
+(становитесь основателем).
+
+**Порог голосования**:
+
+| Участников в сети | Что нужно новичку |
+| --- | --- |
+| **≤ 5** | без голосования, автоматически |
+| **6–7** | **единогласно** |
+| **≥ 8** | **более 1/3** голосов «за» (8 → 3, 9 → 4, 12 → 5) |
+
+**Как голосовать**: все заявки собраны под иконкой «**Голосование**» слева — появляется **красная
+точка**, панель открывается **только при наведении мыши**. Варианты: **за / против / воздержаться**.
+После голосования точка исчезает; **изменить голос можно в течение 5 минут**; **голосование действует
+1 день**, после чего считается завершённым; история — в разделе «**Ещё**».
+**Автоматического согласия нет** — всегда решает человек.
+
+> Если MAC-адрес недоступен (например, в виртуальной машине), программа создаёт постоянный
+> случайный идентификатор (`RND-XXXX-XXXX-XXXX`) и использует его как физический адрес.
+
+### 3.5 Быстрый старт
 
 1. Установите **Python 3.8+** на каждый компьютер (в Windows отметьте *Add Python to PATH*).
 2. Скопируйте всю папку на каждый компьютер (USB-флешка, облако, общая папка — путь может быть любым).
@@ -495,7 +612,7 @@ python test_gui_smoke.py   # GUI 冒煙 + 更新檢查 + 清單解析 + 獨立�
 
 > Совет: сообщите всем номер группы; группу достаточно создать на одном компьютере — все войдут в неё же.
 
-### 3.5 Правила голосования за смену имени
+### 3.6 Правила голосования за смену имени
 
 - **Первая смена имени** — сохраняется сразу, без чьего-либо согласия.
 - **Вторая и последующие** — при нажатии «保存名字» в сеть отправляется запрос на голосование;
@@ -505,7 +622,7 @@ python test_gui_smoke.py   # GUI 冒煙 + 更新檢查 + 清單解析 + 獨立�
 - **Защита от накрутки**: один компьютер — один голос за одно голосование; у каждого голосования уникальный номер.
 - Заявка и результат попадают в общий журнал и видны всем.
 
-### 3.6 Личные сообщения и секретная пересылка офлайн
+### 3.7 Личные сообщения и секретная пересылка офлайн
 
 **Как открыть**: аватар участника на вкладке «成员» либо аватар/имя в области чата.
 
@@ -524,14 +641,14 @@ python test_gui_smoke.py   # GUI 冒煙 + 更新檢查 + 清單解析 + 獨立�
 > (пользователь компьютера-хранителя не может посмотреть сообщение в приложении). Для защиты от чтения файлов
 > на диске хранителя потребовалось бы асимметричное шифрование.
 
-### 3.7 Как распространяются файлы
+### 3.8 Как распространяются файлы
 
 1. **Отправитель в сети** → получатель качает файл **напрямую** у отправителя (проверка SHA-256, при повреждении — повтор).
 2. **Отправитель не в сети** → в «Журнале» публичный запрос (виден всем, но выполнить его может только программа):
    компьютеры, у которых файл уже есть, автоматически сообщают свой IP; запрашивающий берёт файл у **первого ответившего**.
 3. При входе в группу список файлов синхронизируется автоматически — пропущенные файлы докачиваются.
 
-### 3.8 Версии и обновление
+### 3.9 Версии и обновление
 
 **Обновление — это отдельная программа**: основная программа `neiwang.py` только проверяет наличие новой
 версии и показывает окно, а само обновление выполняет лежащая в той же папке отдельная программа
@@ -602,7 +719,7 @@ python test_gui_smoke.py   # GUI 冒煙 + 更新檢查 + 清單解析 + 獨立�
 > Примечание: адреса `update_url` и `update_repo` уже указывают на репозиторий выше. Если ваша ветка по умолчанию — `master`,
 > а не `main`, замените `main` в коде (или в `config.json`) на `master`.
 
-### 3.9 Каталоги данных
+### 3.10 Каталоги данных
 
 ```
 data/
@@ -618,7 +735,7 @@ update_clone/           # новая версия, полученная прог
 update.wenyi            # манифест: номер версии + список изменений
 ```
 
-### 3.10 Частые вопросы
+### 3.11 Частые вопросы
 
 - **Компьютеры не видят друг друга?** Проверьте, что они в одной подсети; разрешите Python в брандмауэре; убедитесь, что на роутере не включена изоляция клиентов.
 - **Порт занят?** Программа автоматически пробует порты после 45431; UDP 45455 используется только для поиска.
@@ -629,17 +746,19 @@ update.wenyi            # манифест: номер версии + списо
 - **Обновление не сработало?** Смотрите причину, которую выдала программа: ① при обновлении через Git — установлен ли Git (`git --version`) и задано ли поле `update_repo`; ② если Git не установлен — задайте в `data/config.json` адрес ZIP-пакета `update_package`; ③ если всё в порядке — проверьте доступ к серверу обновлений / репозиторию.
 - **Как корректно закрыть программу?** Просто закройте окно — всё сохраняется автоматически.
 
-### 3.11 Разработка и тесты
+### 3.12 Разработка и тесты
 
 ```bash
-python test_protocol.py    # тесты протокола: чат, личные сообщения, секретная пересылка, файлы, офлайн-поиск, голосование
+python test_protocol.py    # тесты протокола: вступление в сеть, чат, личные сообщения, секретная пересылка, файлы, офлайн-поиск, голосование
+python test_net.py         # приём в сеть: реестр MAC, поиск/заявка/создание, пороги голосования, воздержание, смена голоса, таймаут
+python test_ui_net.py      # проверки интерфейса сети и голосования: красная точка, всплывающая панель, страницы, история
 python test_gui_smoke.py   # дымовые тесты GUI, проверка обновлений, разбор манифеста, отдельная программа обновления (резерв/возврат/ZIP)
 ```
 
 - Тесты используют каталоги `_testdata/` и `_testdata_gui/` и не трогают вашу папку `data/`;
 - Для ускорения тестов есть переменные окружения: `NEIWANG_PRES_INTERVAL`, `NEIWANG_PRES_TTL`, `NEIWANG_VOTE_NEED`, `NEIWANG_VOTE_WAIT`, `NEIWANG_DATA_DIR`, `NEIWANG_UPDATE_ROOT`.
 
-### 3.12 Контакты
+### 3.13 Контакты
 
 Ошибки, предложения и пожелания присылайте на **3814859587@qq.com**.
 
@@ -692,10 +811,47 @@ python test_gui_smoke.py   # дымовые тесты GUI, проверка о�
 | Offline file fallback | If the sender is offline, the app asks publicly in the log and any peer that already has the file serves it automatically |
 | Rename voting | Free choice of name; the **first rename is free**, later ones need more than 5 approving votes |
 | Public log | A read-only, network-wide public log visible to everyone |
+| Admission to the network | Records every computer's **physical address (MAC)**; until admitted the app is empty. On startup it scans: joins a network if one exists, otherwise creates one |
+| Join voting | **≤5 members** — no vote; **6–7** — unanimous; **≥8** — more than 1/3; abstain and change your vote |
 | Update check | Checked automatically at startup; silent when there is no network or the version is unchanged; a dialog appears only for a new version ("New version — v…" plus the changelog), and the update itself is performed by the separate updater `neiwang_update.py` in the same folder |
 | System notifications | On download completion: `「qqq」群「AA」的「你好」下载完毕` |
 
-### 4.4 Quick start
+| Admission to the network | Records every computer's **physical address (MAC)**; until admitted the app is empty. On startup it scans: joins a network if one exists, otherwise creates one |
+| Join voting | **≤5 members** — no vote; **6–7** — unanimous; **≥8** — more than 1/3; abstain and change your vote |
+| System notifications | On download completion: `「qqq」群「AA」的「你好」下载完毕` |
+
+### 4.4 Intranet admission and join voting (new)
+
+The app groups the computers on your LAN into an "**intranet**": **until you are admitted, the app is
+empty** — groups, chat and files are all unavailable. Every computer's **physical address (MAC)** is
+recorded in a shared member registry that is synchronised across the whole network.
+
+**What happens at startup**: if you are already in a network, you announce it; otherwise the app first
+**scans** for nearby networks — if one is found it **applies to join** automatically; if none is found it
+**creates its own** (you become the founder).
+
+**Voting thresholds**:
+
+| Current members | What a newcomer needs |
+| --- | --- |
+| **≤ 5** | no vote, admitted automatically |
+| **6–7** | **unanimous** approval |
+| **≥ 8** | **more than 1/3** approvals (8 → 3 votes, 9 → 4, 12 → 5) |
+
+**How voting works**: every join request is collected under the "**Vote**" icon on the left — a **red dot**
+appears, and the panel opens **only when you hover the icon**. Choices: **approve / reject / abstain**.
+The dot disappears once you vote; **you can change your vote within 5 minutes**; **a vote stays open for
+1 day** and then counts as finished; the history lives under "**More**".
+There is **no auto-approve setting** — a human always decides.
+
+> Machines without a usable MAC (some virtual machines) get a persistent random ID shown as
+> `RND-XXXX-XXXX-XXXX`; it is registered and votes just like a real address.
+
+### 4.5 Quick start
+
+> **The network is formed automatically on first launch**: the app scans for nearby networks — if one is
+> found it applies to join (a vote is required on larger networks), otherwise it creates one. Group
+> features become available **only after you are admitted** (see section 4.4).
 
 1. Install **Python 3.8+** on every computer (on Windows tick *Add Python to PATH*).
 2. Copy the whole folder to each computer (USB drive, cloud drive or shared folder — the path may differ).
@@ -710,7 +866,7 @@ python test_gui_smoke.py   # дымовые тесты GUI, проверка о�
 
 > Tip: share the group ID; one computer creates the group and everybody joins the same one.
 
-### 4.5 Rename voting rules
+### 4.6 Rename voting rules
 
 - **First rename**: saved directly in Settings, effective immediately, no approval needed.
 - **Second and later**: clicking "保存名字" broadcasts a voting request; every other online user gets a
@@ -720,7 +876,7 @@ python test_gui_smoke.py   # дымовые тесты GUI, проверка о�
 - **Anti-cheating**: one computer counts once per vote, and each vote has a unique ID.
 - Requests and results are written to the public log for everyone to see.
 
-### 4.6 Private chat and offline secret relay
+### 4.7 Private chat and offline secret relay
 
 **How to open**: the "成员" (members) tab in a group, or any avatar/name inside the chat area.
 
@@ -739,7 +895,7 @@ python test_gui_smoke.py   # дымовые тесты GUI, проверка о�
 > (the relay user cannot view it in the app). Resisting a relay owner who inspects raw disk files would require
 > asymmetric encryption.
 
-### 4.7 How group files are distributed
+### 4.8 How group files are distributed
 
 1. **Sender online** → the receiver downloads **directly** from the sender (SHA-256 verified, retried on corruption).
 2. **Sender offline** → a **public request** is posted in the log (everyone can read it, only programs act on it):
@@ -747,7 +903,7 @@ python test_gui_smoke.py   # дымовые тесты GUI, проверка о�
    **first responder** — no user interaction needed on either side.
 3. Joining a group syncs that group's file list, so previously missed files are downloaded automatically.
 
-### 4.8 Versioning and updates
+### 4.9 Versioning and updates
 
 **Updating is a separate program**: the main program `neiwang.py` only checks and shows a dialog, while the
 actual update is performed by the separate updater **`neiwang_update.py`** in the same folder
@@ -819,7 +975,7 @@ The path of the new version is then shown, with one-click options to open the ne
 > Note: `update_url` and `update_repo` already point to the repository above. If your default branch is `master` rather
 > than `main`, change `main` in the code (or in `config.json`) to `master`.
 
-### 4.9 Data directories
+### 4.10 Data directories
 
 ```
 data/
@@ -835,7 +991,7 @@ update_clone/           # the new version fetched by the updater neiwang_update.
 update.wenyi            # version manifest: version number + changelog
 ```
 
-### 4.10 FAQ
+### 4.11 FAQ
 
 - **Two computers cannot see each other?** Make sure they are on the same subnet, allow Python through the
   firewall, and check that the router does not enable AP/client isolation.
@@ -850,10 +1006,12 @@ update.wenyi            # version manifest: version number + changelog
 - **Update failed?** Follow the reason the program prints: ① for Git-based updates, check that Git is installed (`git --version`) and that `update_repo` is configured; ② if Git is not installed, set `update_package` (the ZIP update package URL) in `data/config.json`; ③ if all of that is fine, check that the update server / repository is reachable.
 - **How do I quit cleanly?** Just close the window — all state is saved automatically.
 
-### 4.11 Development and tests
+### 4.12 Development and tests
 
 ```bash
-python test_protocol.py    # headless protocol tests: group chat, private chat, secret relay, file download, offline fallback, rename voting
+python test_protocol.py    # headless protocol tests: admission, group chat, private chat, secret relay, files, offline fallback, rename voting
+python test_net.py         # intranet admission: MAC registry, scan/apply/create, all three vote thresholds, abstain, vote change, timeout
+python test_ui_net.py      # intranet/vote UI assertions: red dot, hover panel, vote page, history page, member registry
 python test_gui_smoke.py   # GUI smoke tests + update check + manifest parsing + the separate updater (backup/restore/ZIP update)
 ```
 
@@ -861,6 +1019,6 @@ python test_gui_smoke.py   # GUI smoke tests + update check + manifest parsing +
 - Environment variables for faster tests: `NEIWANG_PRES_INTERVAL`, `NEIWANG_PRES_TTL`, `NEIWANG_VOTE_NEED`,
   `NEIWANG_VOTE_WAIT`, `NEIWANG_DATA_DIR`, `NEIWANG_UPDATE_ROOT`.
 
-### 4.12 Contact
+### 4.13 Contact
 
 Bug reports, suggestions and feature requests are welcome at **3814859587@qq.com**.

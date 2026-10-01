@@ -29,6 +29,9 @@ os.environ["NEIWANG_UDP_PORT"] = "45679"
 os.environ["NEIWANG_TCP_PORT"] = "45631"
 os.environ["NEIWANG_VOTE_NEED"] = "1"    # 测试环境：同意票超过 1 票（即 2 票）即通过
 os.environ["NEIWANG_VOTE_WAIT"] = "8"    # 投票等待 8 秒（超时未过则失败）
+os.environ["NEIWANG_SCAN_WINDOW"] = "1"          # 内网扫描 1 秒
+os.environ["NEIWANG_NET_ANNOUNCE"] = "2"         # 内网公告 2 秒一次
+os.environ["NEIWANG_NET_REQ_REBROADCAST"] = "2"  # 入网申请重播 2 秒一次
 
 import neiwang as M
 
@@ -103,15 +106,26 @@ print("=" * 70)
 print("内部网 LAN 无头协议测试（4 台模拟电脑）")
 print("=" * 70)
 
-# ---------------- 机器 A：创建群组，发送文字与文件 ----------------
+# ---------------- 先入网：A 自建内网，B/C/D 自动发现并加入（≤5 人免投票） ----------------
 coreA, qA = make_core("UID-A", "AA", 45631, "A")
 coreB, qB = make_core("UID-B", "BB", 45632, "B")
 coreC, qC = make_core("UID-C", "CC", 45633, "C")
-bucketA, bucketB, bucketC = [], [], []
-collect_events_loop(qA, bucketA); collect_events_loop(qB, bucketB); collect_events_loop(qC, bucketC)
+coreD, qD = make_core("UID-D", "DD", 45634, "D")
+bucketA, bucketB, bucketC, bucketD = [], [], [], []
+collect_events_loop(qA, bucketA); collect_events_loop(qB, bucketB)
+collect_events_loop(qC, bucketC); collect_events_loop(qD, bucketD)
 
-coreA.start(); coreB.start(); coreC.start()
-time.sleep(1.5)
+coreA.start(); time.sleep(2.0)
+coreB.start(); coreC.start(); coreD.start()
+ok("A 自动建立内网", wait_for(lambda: coreA.in_net(), 15))
+_nid = coreA.net["nid"] if coreA.in_net() else ""
+ok("B 自动加入同一内网", wait_for(lambda: coreB.in_net() and coreB.net.get("nid") == _nid, 20))
+ok("C 自动加入同一内网", wait_for(lambda: coreC.in_net() and coreC.net.get("nid") == _nid, 20))
+ok("D 自动加入同一内网", wait_for(lambda: coreD.in_net() and coreD.net.get("nid") == _nid, 20))
+ok("A 的成员登记表记录了 B/C/D 的物理地址", wait_for(
+    lambda: {"UID-B", "UID-C", "UID-D"} <= set(coreA.net_members), 15))
+ok("D 的登记表里有 A（互相记录物理地址）", wait_for(
+    lambda: "UID-A" in coreD.net_members, 10))
 
 # 1) 创建群组并加入
 gid = coreA.create_group("qqq")["gid"]
@@ -210,13 +224,14 @@ ok("C 收不到发给 B 的私聊", not any(e[0] == "dm" and not e[1].get("self"
 ok("发给自己被拒绝", coreA.send_dm("UID-A", "自言自语") is False)
 
 # 4.7) 保密转存：A 给离线的 D 发私聊 -> 加密转存到在线 C -> D 上线自动送达 -> C 删除
-coreD, qD = make_core("UID-D", "DD", 45634, "D")   # 先不启动 = 离线
 k = os.urandom(32)
 ok("转存加解密往返正确", M.secret_decrypt(M.secret_encrypt("完整校验测试", k), k) == "完整校验测试")
 
-# 让 B 暂时下线，确保只有 C 一个在线同学可被选为转存方（结果确定）
+# 让 B、D 暂时下线（D 本来就是内网成员，只是离线），确保只有 C 可被选为转存方（结果确定）
 coreB.stop()
+coreD.stop()
 ok("B 下线", wait_for(lambda: not coreA.is_online("UID-B"), 8))
+ok("D 下线（内网成员离线）", wait_for(lambda: not coreA.is_online("UID-D"), 8))
 
 coreA.send_dm_auto("UID-D", "D 离线时的保密消息")
 sent = {}
@@ -237,8 +252,6 @@ ok("C 无感（无任何事件）", not any(e[0] in ("dm", "dm_sent") for e in b
 ok("C 磁盘持久化了转存", (coreC.data_root / "secret_relay.json").exists())
 
 # D 上线 -> C 自动送达 -> D 校验通过 -> C 删除
-bucketD = []
-collect_events_loop(qD, bucketD)
 coreD.start()
 ok("D 上线后收到转存私聊", wait_for(lambda: any(
     e[0] == "dm" and e[1].get("from_uid") == "UID-A"
