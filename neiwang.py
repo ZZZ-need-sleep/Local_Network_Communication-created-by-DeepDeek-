@@ -16,7 +16,8 @@
      待对方上线自动送达，送达后校验完整性并删除转存（转存方全程无感、无法查看）
   5. 文件功能：向群组发送文件；检测到已加入群组的新文件 -> 自动下载
   6. 联网检查更新：每次启动自动检查；未联网 / 版本号相同或更旧 -> 无任何反馈；
-     仅当远程版本更新 -> 弹窗提醒，实际更新由同目录下的独立程序 neiwang_update.py 完成
+     仅当远程版本更新 -> 弹窗提醒，实际更新由同目录下的独立程序 neiwang_update1.py 完成
+     （双更新程序：更新程序1 就地更新除自己以外的全部文件，更新程序2 只更新更新程序1）
   7. 局域网内设置群组（班级 / 小组），可加入多个群组，也可退出某个群组
   8. 每个用户在群组内显示自己的名字：第一次改名自由，之后的修改需超过 5 名用户
      投票同意（其他电脑收到投票弹窗，同意票足够后名字自动更新）
@@ -29,8 +30,9 @@
  11. 所有文件打开时自动用系统默认应用程序打开
 
 运行：python neiwang.py       （Windows 可双击 启动.bat）
-更新：更新是单独一个程序 neiwang_update.py（Windows 可双击 更新.bat），可单独运行；
-      本程序只负责「启动时静默检查 + 发现新版本时弹窗提醒」，更新的备份/取包/回填都由它做。
+更新：更新是单独的程序 neiwang_update1.py（Windows 可双击 更新.bat），可单独运行；
+      本程序只负责「启动时静默检查 + 发现新版本时弹窗提醒」，更新的备份/取包/回填/就地覆盖都由它做；
+      更新程序1 完成后会用 --patch-updater1 调起 neiwang_update2.py 来更新更新程序1 自己。
 零第三方依赖，Python 3.8+ 即可。
 """
 
@@ -62,14 +64,15 @@ from tkinter import ttk, messagebox, filedialog, simpledialog
 # 全局常量 / 配置
 # ----------------------------------------------------------------------------
 APP_NAME = "内部网"
-APP_VERSION = "1.1.0"        # 兜底版本号；实际以程序目录 update.wenyi 的第一行为准
+APP_VERSION = "2.0.0"        # 兜底版本号；实际以程序目录 update.wenyi 的第一行为准
 
 # 版本清单文件：第一行版本号，其余各行是「更新内容」。本地一份，更新服务器上也放一份。
 UPDATE_MANIFEST_NAME = "update.wenyi"
 
-# 主程序 / 独立更新程序的文件名（更新是单独一个程序，主程序只负责检查与提醒）
+# 主程序 / 独立更新程序的文件名（更新是单独的程序，主程序只负责检查与调起更新程序1）
 MAIN_PROGRAM_NAME = "neiwang.py"
-UPDATER_PROGRAM_NAME = "neiwang_update.py"
+UPDATER_PROGRAM_NAME = "neiwang_update1.py"    # 更新程序1：就地更新除自己以外的全部
+UPDATER2_PROGRAM_NAME = "neiwang_update2.py"   # 更新程序2：只更新更新程序1
 
 # Git 仓库（版本发布与更新都用它）
 GITHUB_OWNER = "ZZZ-need-sleep"
@@ -117,6 +120,28 @@ RENAME_VOTE_NEED  = int(os.environ.get("NEIWANG_VOTE_NEED", "5"))      # 默认�
 RENAME_VOTE_WAIT  = float(os.environ.get("NEIWANG_VOTE_WAIT", "120"))  # 投票等待秒数，超时未过则失败
 
 SECRET_RELAY_RETRY = 3    # 转存送达失败（校验不通过等）的重试上限
+
+# ---------------------------------------------------------------------------
+# 局域网活动历史（新功能 A，见 design_v2 第 1 节）
+#   公共日志/群聊/代理/系统的操作数据持久化在 data/active_log.json，
+#   启动时用 act_hello 问询、act_have 应答，再通过 TCP act_get 补齐空档。
+# ---------------------------------------------------------------------------
+ACT_MAX_EVENTS     = 5000    # active_log.json 事件条数上限（超出丢弃最旧的）
+ACT_MAX_PULL       = 2000    # 一次 TCP 补齐最多返回的事件条数
+ACT_HELLO_INTERVAL = 60.0    # 启动问询与周期问询间隔（秒）
+ACT_HAVE_THROTTLE  = 0.5     # act_have 应答节流（秒）
+ACT_PULL_WAIT      = 6.0     # 等待应答/取数的总窗口（秒）
+ACT_SAVE_THROTTLE  = 0.5     # active_log.json 落盘节流（秒）
+
+# ---------------------------------------------------------------------------
+# 设备数据传输代理（新功能 B，见 design_v2 第 2 节）
+#   群内无人在线时，把文件或信息临时寄存到局域网其他在线设备上，上线后自动送达并回收。
+# ---------------------------------------------------------------------------
+PROXY_REQ_WAIT     = 10.0    # 等待在线应答（秒）
+PROXY_GROUP_WAIT   = 300.0   # 群成员这段时间内都没上线就向其他局域网成员扩散
+PROXY_PUSH_TIMEOUT = 15.0    # 推送 / 拉取的 TCP 超时（秒）
+PROXY_ID_BYTES     = 16      # proxy_id = 32 位十六进制随机串
+PROXY_FILE_SUFFIX  = ".proxy"
 
 # ---------------------------------------------------------------------------
 # 内网（准入 + 物理地址登记 + 入网投票）
@@ -245,8 +270,18 @@ def is_newer_version(remote: str, local: str) -> bool:
 
 
 def updater_path() -> Path:
-    """同目录下的独立更新程序（更新单独一个程序，主程序只负责调起它）。"""
+    """同目录下的更新程序1（更新程序1 就地更新全部，再由更新程序2 更新它自己）。"""
     return Path(__file__).resolve().parent / UPDATER_PROGRAM_NAME
+
+
+def act_sig(mac, count, last_get_ts, max_ts) -> str:
+    """局域网活动数据的校验指纹 = sha256(mac|count|last_get_ts|max_ts) 的前 16 个 hex 字符。
+
+    ⚠ 两个浮点必须用 "%.3f" 格式化：C++ 版用 snprintf("%.3f")，两边字符串必须逐字节一致，
+    否则跨语言（Python ⇄ C++）校验指纹会对不上。见 design_v2 第 1.3 节。
+    """
+    raw = f"{mac}|{count}|{float(last_get_ts):.3f}|{float(max_ts):.3f}".encode("utf-8")
+    return hashlib.sha256(raw).hexdigest()[:16]
 
 
 def local_manifest_path() -> Path:
@@ -276,6 +311,12 @@ LOCAL_MANIFEST = load_local_manifest()
 
 
 def get_local_ips() -> list:
+    """本机 IPv4 列表（不含 127.0.0.1）。
+
+    返回顺序做了「可路由优先」处理：169.254.x 是 APIPA（网卡拿不到 DHCP 时的链路本地地址），
+    对方按这个地址连过来会超时。getaddrinfo 的结果按字典序排恰好会把 169.254.x 排在最前，
+    所以这里把它排到最后，与 C++ 版 local_ipv4() 的选择保持一致（见 design_v2）。
+    """
     ips = set()
     try:
         for info in socket.getaddrinfo(socket.gethostname(), None, socket.AF_INET):
@@ -283,7 +324,9 @@ def get_local_ips() -> list:
     except Exception:
         pass
     ips.discard("127.0.0.1")
-    return sorted(ips) or ["127.0.0.1"]
+    normal = sorted(ip for ip in ips if not ip.startswith("169.254."))
+    linklocal = sorted(ip for ip in ips if ip.startswith("169.254."))
+    return (normal + linklocal) or ["127.0.0.1"]
 
 
 def compute_sha256(path: Path, progress=None) -> str:
@@ -622,6 +665,27 @@ class PeerCore:
         self._net_reply_ts = 0.0     # 扫描应答节流（广播应答，见 _on_net_scan）
         self._load_net()
 
+        # ---------------- 局域网活动历史（新功能 A） ----------------
+        self.run_since = now_ts()    # 本进程连续运行起始时间（仅内存，不持久化）
+        self.act_events = []         # 活动事件（按 (ts, eid) 升序）
+        self.act_seq = 0             # 本机单调事件序号（从 1 开始）
+        self.act_first_ts = 0.0
+        self.last_get_ts = 0.0       # 最后一次从局域网取得/合并活动数据的时间
+        self._act_last_save = 0.0    # 落盘节流
+        self._act_replies = []       # 本次问询窗口内的 act_have 应答（按到达顺序）
+        self._act_pulling = False
+        self._act_have_ts = 0.0      # act_have 应答节流
+        self._act_last_hello = 0.0
+        self._load_activity()
+
+        # ---------------- 设备数据传输代理（新功能 B） ----------------
+        self.proxies = {}            # proxy_id -> 代理记录（data/proxy.json）
+        self._proxy_wait = {}        # req_id -> 在线请求等待上下文
+        self._proxy_no_target = set()  # proxy_id：创建后还没有任何 target 上线过
+        self._known_online = set()   # 已经做过「上线提醒」的 uid
+        self._group_known = {}       # gid -> {uid: name}（见过的群成员，用于代理 targets）
+        self._load_proxies()
+
     # ------------------------------------------------------------- 基本属性 --
     @property
     def my_name(self) -> str:
@@ -642,12 +706,16 @@ class PeerCore:
             ("sweep", self._sweep_loop),
             ("download", self._download_worker),
             ("net", self._net_loop),
+            ("act", self._act_loop),
+            ("proxy", self._proxy_loop),
         ]
         for _name, fn in workers:
             t = threading.Thread(target=self._safe(fn), name=f"core-{_name}", daemon=True)
             t.start()
             self._threads.append(t)
-        self._emit("syslog", f"程序启动完成，局域网地址 {', '.join(get_local_ips())}")
+        ips = ", ".join(get_local_ips())
+        self._emit("syslog", f"程序启动完成，局域网地址 {ips}")
+        self.record_activity("sys", f"「{self.my_name}」启动，局域网地址 {ips}")
 
     def stop(self):
         self._running = False
@@ -658,6 +726,15 @@ class PeerCore:
             pass
         for t in self._threads:
             t.join(timeout=1.5)
+        # 退出时强制落盘（活动历史 / 代理元数据）
+        try:
+            self._save_activity(force=True)
+        except Exception:
+            pass
+        try:
+            self._save_proxies()
+        except Exception:
+            pass
 
     def _safe(self, fn):
         def wrap(*a, **kw):
@@ -802,6 +879,20 @@ class PeerCore:
             self._on_net_member_left(msg)
         elif kind == "net_join_result":
             self._on_net_join_result(msg)
+        # ---------------- 局域网活动历史（新功能 A） ----------------
+        elif kind == "act_hello":
+            self._on_act_hello(msg, addr)
+        elif kind == "act_have":
+            self._on_act_have(msg)
+        # ---------------- 设备数据传输代理（新功能 B） ----------------
+        elif kind == "proxy_req":
+            self._on_proxy_req(msg, addr)
+        elif kind == "proxy_ack":
+            self._on_proxy_ack(msg)
+        elif kind == "proxy_online":
+            self._on_proxy_online(msg, addr)
+        elif kind == "proxy_consumed":
+            self._on_proxy_consumed_msg(msg)
 
     def _prune_seen(self):
         ts = now_ts()
@@ -830,7 +921,10 @@ class PeerCore:
                     "host_name": self.peers[uid]["name"],
                     "ts": now_ts(),
                 })
+                self._group_known.setdefault(gid, {})[uid] = self.peers[uid]["name"]
         self._on_presence_hook_deliver(uid)
+        self._on_peer_online(uid, self.peers[uid]["name"],
+                             [g.get("gid") for g in self.peers[uid]["groups"] if g.get("gid")])
         self._emit("peers_changed")
 
     def _on_group_announce(self, msg: dict):
@@ -883,6 +977,7 @@ class PeerCore:
             for uid in list(self.peers):
                 if ts - self.peers[uid]["ts"] > PRESENCE_TTL * 2:
                     del self.peers[uid]
+                    self._known_online.discard(uid)   # 再次上线时要重新做「上线提醒」
                     changed = True
             for gid in list(self.discovered):
                 if ts - self.discovered[gid]["ts"] > PRESENCE_TTL * 4:
@@ -893,6 +988,10 @@ class PeerCore:
 
     # ------------------------------------------------------------- 聊天 --
     def send_chat(self, gid: str, text: str):
+        """群聊：广播文字；群内没有任何其他成员在线时同时启动信息代理（见 design_v2 第 2 节）。"""
+        return self.send_group_message(gid, text)
+
+    def send_group_message(self, gid: str, text: str):
         text = str(text).strip()[:MAX_CHAT_LEN]
         if not text:
             return
@@ -904,8 +1003,23 @@ class PeerCore:
             "t": "chat", "gid": gid, "gname": g["gname"],
             "text": text, "ts": now_ts(),
         })
+        self.record_activity("chat", f"{self.my_name}: {text}")
         self._emit("chat", {"gid": gid, "gname": g["gname"], "from_name": self.my_name,
                             "from_uid": self.uid, "text": text, "ts": now_ts(), "self": True})
+        # 群内无人在线 -> 交给数据代理，等成员上线后自动送达
+        self._maybe_start_proxy_msg(gid, text)
+
+    def _maybe_start_proxy_msg(self, gid: str, text: str):
+        try:
+            if not self.in_net():
+                return
+            others = [m for m in self.group_members(gid)
+                      if not m.get("self") and self.is_online(m["uid"])]
+            if others:
+                return
+            self.start_proxy("msg", gid, text=text)
+        except Exception:
+            traceback.print_exc()
 
     def _on_chat(self, msg: dict):
         gid = msg.get("gid")
@@ -913,9 +1027,12 @@ class PeerCore:
             return
         if not self._member_ok(msg.get("uid")):
             return   # 内网外的机器发来的消息一律忽略
+        name = msg.get("name", "?")
+        text = str(msg.get("text", ""))[:MAX_CHAT_LEN]
+        self.record_activity("chat", f"{name}: {text}", ts=msg.get("ts", now_ts()))
         self._emit("chat", {"gid": gid, "gname": msg.get("gname", ""),
-                            "from_name": msg.get("name", "?"), "from_uid": msg.get("uid"),
-                            "text": str(msg.get("text", ""))[:MAX_CHAT_LEN],
+                            "from_name": name, "from_uid": msg.get("uid"),
+                            "text": text,
                             "ts": msg.get("ts", now_ts()), "self": False})
 
     # ------------------------------------------------------------- 双人私聊 --
@@ -1286,14 +1403,869 @@ class PeerCore:
     # ------------------------------------------------------------- 公共日志 --
     def broadcast_log(self, text: str):
         """向全网广播一条日志（所有人可见、只读）。"""
-        self._broadcast({"t": "log", "text": str(text)[:300], "ts": now_ts()})
-        self._emit("log", f"[{fmt_time(now_ts())}] {self.my_name}: {text}")
+        ts = now_ts()
+        self.record_activity("log", f"{self.my_name}: {text}", ts=ts)
+        self._broadcast({"t": "log", "text": str(text)[:300], "ts": ts})
+        self._emit("log", f"[{fmt_time(ts)}] {self.my_name}: {text}")
 
     def _on_log(self, msg: dict):
         if not self._member_ok(msg.get("uid")):
             return   # 内网外的机器不能往我们的公共日志里写东西
-        self._emit("log", f"[{fmt_time(msg.get('ts', now_ts()))}] "
-                          f"{msg.get('name', '?')}: {msg.get('text', '')}")
+        ts = msg.get("ts", now_ts())
+        text = str(msg.get("text", ""))
+        self.record_activity("log", f"{msg.get('name', '?')}: {text}", ts=ts)
+        self._emit("log", f"[{fmt_time(ts)}] {msg.get('name', '?')}: {text}")
+
+    # ========================================================= 局域网活动历史（新功能 A）--
+    #   · data/active_log.json：持久化的公共日志操作数据（日志 / 群聊 / 代理 / 系统）
+    #   · act_hello 问询 -> act_have 校验应答 -> 选最合适的设备用 TCP act_get 补齐空档
+    #   · eid = uid-seq 保证跨设备去重合并；seq 只用自己的单调序号
+    def active_log_path(self) -> Path:
+        return self.data_root / "active_log.json"
+
+    def _load_activity(self):
+        """读取 active_log.json；文件不存在 / 无法解析 = 本机没有任何局域网活动数据。"""
+        try:
+            p = self.active_log_path()
+            if not p.exists():
+                return
+            d = json.loads(p.read_text(encoding="utf-8"))
+            if not isinstance(d, dict):
+                return
+            evs = [e for e in (d.get("events") or [])
+                   if isinstance(e, dict) and e.get("eid")]
+            evs.sort(key=lambda e: (float(e.get("ts") or 0), str(e.get("eid"))))
+            self.act_events = evs[-ACT_MAX_EVENTS:]
+            self.act_seq = int(d.get("seq") or 0)
+            self.act_first_ts = float(d.get("first_ts") or 0)
+            self.last_get_ts = float(d.get("last_get_ts") or 0)
+        except Exception:
+            self.act_events = []
+            self.act_seq = 0
+            self.act_first_ts = 0.0
+            self.last_get_ts = 0.0
+
+    def _activity_blob(self) -> dict:
+        return {
+            "net_id": (self.net or {}).get("nid", ""),
+            "my_mac": self.uid,
+            "last_get_ts": float(self.last_get_ts or 0),
+            "first_ts": float(self.act_first_ts or 0),
+            "seq": int(self.act_seq),
+            "events": list(self.act_events),
+        }
+
+    def _save_activity(self, force: bool = True):
+        """落盘 active_log.json（节流：最多每 ACT_SAVE_THROTTLE 秒一次）。"""
+        now = now_ts()
+        with self._lock:
+            if not force and now - self._act_last_save < ACT_SAVE_THROTTLE:
+                return
+            self._act_last_save = now
+            blob = self._activity_blob()
+        try:
+            self.active_log_path().write_text(
+                json.dumps(blob, ensure_ascii=False, indent=1), encoding="utf-8")
+        except Exception:
+            pass
+
+    def save_activity(self):
+        """强制落盘（测试 / 退出时用）。"""
+        self._save_activity(force=True)
+
+    def record_activity(self, kind: str, text: str, ts=None) -> str:
+        """记录一条局域网活动事件，返回 eid = uid-seq。"""
+        with self._lock:
+            ts = float(ts if ts is not None else now_ts())
+            self.act_seq = int(self.act_seq) + 1
+            seq = self.act_seq
+            eid = f"{self.uid}-{seq}"
+            self.act_events.append({
+                "eid": eid, "seq": seq, "ts": ts, "uid": self.uid,
+                "name": self.my_name, "kind": str(kind), "text": str(text),
+            })
+            if not self.act_first_ts:
+                self.act_first_ts = ts
+            if len(self.act_events) > ACT_MAX_EVENTS:
+                self.act_events = self.act_events[-ACT_MAX_EVENTS:]
+                self.act_first_ts = float(self.act_events[0].get("ts") or 0)
+        self._save_activity(force=False)
+        return eid
+
+    def activity_view(self, events: bool = False) -> dict:
+        """活动历史概况（GUI 状态条用）。"""
+        with self._lock:
+            v = {"net_id": (self.net or {}).get("nid", ""), "my_mac": self.uid,
+                 "last_get_ts": float(self.last_get_ts or 0),
+                 "first_ts": float(self.act_first_ts or 0),
+                 "seq": int(self.act_seq), "count": len(self.act_events),
+                 "run_since": float(self.run_since)}
+            if events:
+                v["events"] = list(self.act_events)
+            return v
+
+    def device_is_empty(self) -> bool:
+        """「设备空有程序，没有之前局域网相关数据」= 未入网 + 无活动数据 + 无群组。"""
+        return (not self.in_net()) and (not self.act_events) and (not self.groups)
+
+    def _emit_act_log(self, text: str, kind: str = "sys", ts=None):
+        """活动历史日志行：写进「日志」页，并记入活动历史。"""
+        ts = float(ts if ts is not None else now_ts())
+        self._emit("log", f"[{fmt_time(ts)}] {text}")
+        self.record_activity(kind, text, ts=ts)
+
+    # ------------------------------------------------------------- 报文 --
+    def _act_hello_broadcast(self):
+        """t=act_hello：本机活动数据问询（启动时 + 每 ACT_HELLO_INTERVAL 秒）。"""
+        self._broadcast({
+            "t": "act_hello", "mac": self.uid, "ip": get_local_ips()[0],
+            "port": self.my_tcp_port(),
+            "last_get_ts": float(self.last_get_ts or 0),
+            "first_ts": float(self.act_first_ts or 0),
+            "count": len(self.act_events),
+            "run_since": float(self.run_since),
+            "net_id": (self.net or {}).get("nid", ""), "ts": now_ts(),
+        })
+
+    def _act_have_payload(self) -> dict:
+        max_ts = max([float(e.get("ts") or 0) for e in self.act_events] or [0.0])
+        count = len(self.act_events)
+        last_get = float(self.last_get_ts or 0)
+        return {
+            "t": "act_have", "mac": self.uid, "ip": get_local_ips()[0],
+            "port": self.my_tcp_port(),
+            "last_get_ts": last_get, "first_ts": float(self.act_first_ts or 0),
+            "count": count, "run_since": float(self.run_since), "max_ts": max_ts,
+            "sig": act_sig(self.uid, count, last_get, max_ts),
+            "net_id": (self.net or {}).get("nid", ""), "ts": now_ts(),
+        }
+
+    def _on_act_hello(self, msg: dict, addr):
+        """收到问询：内网成员（且内网一致）立即广播应答（节流 ACT_HAVE_THROTTLE）。"""
+        if not self.in_net():
+            return   # 应答方必须是内网成员（避免向陌生人泄露）
+        if str(msg.get("net_id") or "") != str(self.net.get("nid") or ""):
+            return   # 发送方所属内网与我不一致
+        now = now_ts()
+        if now - self._act_have_ts < ACT_HAVE_THROTTLE:
+            return
+        self._act_have_ts = now
+        self._broadcast(self._act_have_payload())
+
+    def _on_act_have(self, msg: dict):
+        """收到校验应答：逐条写日志；正在补齐时记入候选项。"""
+        if not self._member_ok(msg.get("uid")):
+            return
+        if self._act_pulling:
+            self._act_replies.append((now_ts(), dict(msg)))
+        name = str(msg.get("name") or "?")
+        self._emit_act_log(
+            f"收到「{name}」（物理地址 {fmt_mac(msg.get('mac'))}）的局域网活动校验数据："
+            f"连续运行自 {fmt_time(float(msg.get('run_since') or 0))}，"
+            f"最后数据 {fmt_time(float(msg.get('last_get_ts') or 0))}，"
+            f"共 {int(msg.get('count') or 0)} 条", kind="sys")
+
+    # ------------------------------------------------------------- 补齐 --
+    def _act_pick(self, replies: list):
+        """补齐决策：合格应答（run_since <= my_last + 1）中选最先到达的；
+        退化规则：count 更多者优先，其次 max_ts 更大者优先；都没有则返回 None。"""
+        my_last = float(self.last_get_ts or 0)
+        qualified = [r for _t, r in replies
+                     if float(r.get("run_since") or 0) <= my_last + 1]
+        if qualified:
+            return qualified[0], "fastest"
+        cands = [r for _t, r in replies]
+        if not cands:
+            return None, ""
+        cands.sort(key=lambda r: (-int(r.get("count") or 0), -float(r.get("max_ts") or 0)))
+        return cands[0], "most"
+
+    def _act_fetch(self, reply: dict, since: float) -> list:
+        """TCP act_get：从应答方拉取 ts > since 的活动事件。"""
+        ip = str(reply.get("ip") or "")
+        try:
+            port = int(reply.get("port") or 0)
+        except Exception:
+            port = 0
+        if not ip or not port:
+            return []
+        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        sock.settimeout(8)
+        try:
+            sock.connect((ip, port))
+            send_json(sock, {"cmd": "act_get", "since": float(since),
+                             "mac": self.uid, "name": self.my_name})
+            resp = recv_json(sock)
+            if resp.get("cmd") != "act_data":
+                return []
+            return [e for e in (resp.get("events") or [])
+                    if isinstance(e, dict) and e.get("eid")]
+        except Exception:
+            return []
+        finally:
+            try:
+                sock.close()
+            except Exception:
+                pass
+
+    def _act_no_device_log(self):
+        self._emit_act_log("局域网内暂无可用于补齐活动数据的设备"
+                           f"（本机最后数据时间 {fmt_time(float(self.last_get_ts or 0))}）",
+                           kind="sys")
+
+    def _act_pull(self):
+        """启动补齐：广播问询 -> 等 ACT_PULL_WAIT -> 决策 -> TCP 取数 -> 合并。"""
+        with self._lock:
+            self._act_replies = []
+        self._act_pulling = True
+        self._act_last_hello = now_ts()
+        self._act_hello_broadcast()
+        deadline = now_ts() + float(ACT_PULL_WAIT)
+        while self._running and now_ts() < deadline:
+            time.sleep(0.1)
+        self._act_pulling = False
+        replies = list(self._act_replies)
+        if not self.act_events:
+            return   # 本机没有任何数据：不需要补齐，走「空设备」提示流程（第 3 节）
+        chosen, _why = self._act_pick(replies)
+        if not chosen:
+            self._act_no_device_log()
+            return
+        name = str(chosen.get("name") or "?")
+        mac = chosen.get("mac")
+        self._emit_act_log(f"已选定响应最快的「{name}」（物理地址 {fmt_mac(mac)}）"
+                           f"构建连接补齐本机活动数据", kind="sys")
+        events = self._act_fetch(chosen, float(self.last_get_ts or 0))
+        if not events:
+            self._act_no_device_log()
+            return
+        self.merge_activity(events)
+        tss = [float(e.get("ts") or 0) for e in events]
+        self._emit_act_log(f"已从「{name}」补齐 {fmt_time(min(tss))} 至 {fmt_time(max(tss))} "
+                           f"的局域网活动信息（共 {len(events)} 条）", kind="sys")
+
+    def _act_loop(self):
+        time.sleep(0.8)          # 等 UDP 线程就绪
+        if not self._running:
+            return
+        try:
+            self._act_pull()
+        except Exception:
+            if self._running:
+                traceback.print_exc()
+        while self._running:
+            time.sleep(1.0)
+            try:
+                if now_ts() - self._act_last_hello >= ACT_HELLO_INTERVAL:
+                    self._act_last_hello = now_ts()
+                    self._act_hello_broadcast()
+            except Exception:
+                if self._running:
+                    traceback.print_exc()
+
+    def _on_act_get(self, req: dict, conn: socket.socket):
+        """t=TCP cmd=act_get：把本机 ts > since 的前 ACT_MAX_PULL 条活动事件给对方。"""
+        try:
+            since = float(req.get("since") or 0)
+        except Exception:
+            since = 0.0
+        with self._lock:
+            evs = [e for e in self.act_events if float(e.get("ts") or 0) > since]
+            first_ts = float(self.act_first_ts or 0)
+            last_get = float(self.last_get_ts or 0)
+        evs = evs[:ACT_MAX_PULL]
+        send_json(conn, {"cmd": "act_data", "ok": True, "mac": self.uid,
+                         "name": self.my_name, "first_ts": first_ts,
+                         "last_get_ts": last_get, "count": len(evs), "events": evs})
+        if evs:
+            tss = [float(e.get("ts") or 0) for e in evs]
+            who = str(req.get("name") or fmt_mac(req.get("mac")))
+            self._emit_act_log(f"已向「{who}」提供 {fmt_time(min(tss))} 至 {fmt_time(max(tss))} "
+                               f"的局域网活动信息（共 {len(evs)} 条）", kind="sys")
+
+    # ------------------------------------------------------------- 合并 --
+    def _apply_proxy_consumed_text(self, text: str) -> bool:
+        """解析活动历史里的「代理已接受 proxy_id=<pid> holder=<mac>」并执行同样的删除。"""
+        m = re.search(r"proxy_id=(\S+)\s+holder=(\S*)", str(text or ""))
+        if not m:
+            return False
+        return self._proxy_apply_consumed(m.group(1), m.group(2))
+
+    def merge_activity(self, events) -> list:
+        """把别人的活动事件合并进本机：以 eid 去重、按 (ts, eid) 升序、截断、落盘、推 GUI。"""
+        added = []
+        with self._lock:
+            have = {str(e.get("eid")) for e in self.act_events}
+            for e in (events or []):
+                if not isinstance(e, dict):
+                    continue
+                eid = str(e.get("eid") or "")
+                if not eid or eid in have:
+                    continue
+                have.add(eid)
+                ev = {"eid": eid, "seq": e.get("seq", 0), "ts": float(e.get("ts") or 0),
+                      "uid": str(e.get("uid") or ""), "name": str(e.get("name") or ""),
+                      "kind": str(e.get("kind") or "log"), "text": str(e.get("text") or "")}
+                self.act_events.append(ev)
+                added.append(ev)
+            if added:
+                self.act_events.sort(key=lambda e: (float(e.get("ts") or 0), str(e.get("eid"))))
+                # seq 只取本地已有的最大序号（不采用对方的 seq）
+                mine = [int(e.get("seq") or 0) for e in self.act_events
+                        if str(e.get("uid") or "") == self.uid]
+                self.act_seq = max([int(self.act_seq or 0)] + mine)
+                if len(self.act_events) > ACT_MAX_EVENTS:
+                    self.act_events = self.act_events[-ACT_MAX_EVENTS:]
+                self.act_first_ts = float(self.act_events[0].get("ts") or 0)
+            self.last_get_ts = now_ts()
+        # 代理：离线错过的设备在补齐历史时也要执行同样的删除
+        for e in added:
+            if e.get("kind") == "proxy":
+                self._apply_proxy_consumed_text(e.get("text", ""))
+        self._save_activity(force=True)
+        if added:
+            self._emit("act_log", [f"[{fmt_time(e['ts'])}] {e['text']}" for e in added])
+        return added
+
+    # ========================================================= 设备数据传输代理（新功能 B）--
+    #   · data/proxy/<proxy_id>.proxy：代理文件本体（界面上不可见、不可打开）
+    #   · data/proxy.json：代理元数据；只有内网成员参与
+    def proxy_dir(self) -> Path:
+        d = self.data_root / "proxy"
+        d.mkdir(parents=True, exist_ok=True)
+        return d
+
+    def proxy_path(self, proxy_id: str) -> Path:
+        return self.proxy_dir() / f"{proxy_id}{PROXY_FILE_SUFFIX}"
+
+    def proxy_meta_path(self) -> Path:
+        return self.data_root / "proxy.json"
+
+    def _load_proxies(self):
+        try:
+            p = self.proxy_meta_path()
+            if p.exists():
+                d = json.loads(p.read_text(encoding="utf-8"))
+                if isinstance(d, dict):
+                    self.proxies = {k: v for k, v in d.items() if isinstance(v, dict)}
+        except Exception:
+            self.proxies = {}
+
+    def _save_proxies(self):
+        try:
+            self.proxy_meta_path().write_text(
+                json.dumps(self.proxies, ensure_ascii=False, indent=1), encoding="utf-8")
+        except Exception:
+            pass
+
+    def proxy_view(self) -> list:
+        """代理概况（测试用；不进 UI 列表）。"""
+        with self._lock:
+            return [dict(v) for v in self.proxies.values()]
+
+    def _proxy_log(self, text: str):
+        self._emit_act_log(text, kind="proxy")
+
+    def _record_proxy_consumed_activity(self, proxy_id: str, holder: str):
+        self.record_activity("proxy", f"代理已接受 proxy_id={proxy_id} holder={holder}")
+
+    def _group_targets(self, gid: str) -> list:
+        """该群的其他成员（需要送达的人）：见过的 + 当前在线且声明在该群的。"""
+        known = set((self._group_known.get(gid) or {}).keys())
+        for uid, p in self.peers.items():
+            if any(g.get("gid") == gid for g in p.get("groups", [])):
+                known.add(uid)
+        known.discard(self.uid)
+        return sorted(known)
+
+    def _proxy_apply_consumed(self, proxy_id: str, holder: str) -> bool:
+        """代理被接受：holder 不是我 -> 删除本地代理文件与记录；是我 -> 保留（成为分发源）。"""
+        proxy_id = str(proxy_id or "")
+        holder = str(holder or "")
+        with self._lock:
+            rec = self.proxies.get(proxy_id)
+            if not rec:
+                return False
+            if holder and holder == self.uid:
+                rec["consumed"] = True
+                rec["holder"] = holder
+                rec["holders"] = [self.uid]
+                self._save_proxies()
+                return False
+            self.proxies.pop(proxy_id, None)
+            self._proxy_no_target.discard(proxy_id)
+        try:
+            self.proxy_path(proxy_id).unlink()
+        except Exception:
+            pass
+        self._save_proxies()
+        return True
+
+    # ------------------------------------------------------------- 启动代理 --
+    def start_proxy(self, kind: str, gid: str, fid: str = "", name: str = "", size: int = 0,
+                    text: str = "", path=None) -> str:
+        """群内无人在线时启动数据代理：广播在线请求，等待应答后寄存到在线成员。"""
+        g = self.groups.get(gid) or {"gid": gid, "gname": ""}
+        fid = str(fid or "")
+        if path is not None and fid:
+            try:
+                cache = self.cache_dir() / fid
+                if not cache.is_file():
+                    shutil.copy2(Path(path), cache)
+            except Exception:
+                traceback.print_exc()
+        pid = secrets.token_hex(PROXY_ID_BYTES)
+        now = now_ts()
+        rec = {
+            "proxy_id": pid, "kind": str(kind), "gid": gid, "gname": g.get("gname", ""),
+            "file_id": fid, "name": str(name or ""), "size": int(size or 0),
+            "text": str(text or "") if str(kind) == "msg" else "",
+            "sender_uid": self.uid, "sender_name": self.my_name,
+            "from_mac": self.uid, "created_ts": now, "ts": now,
+            "targets": self._group_targets(gid), "delivered_to": [],
+            "holders": [self.uid], "consumed": False, "holder": "",
+        }
+        with self._lock:
+            self.proxies[pid] = rec
+            self._proxy_no_target.add(pid)
+        self._save_proxies()
+        req_id = self._new_msg_id()
+        with self._lock:
+            self._proxy_wait[req_id] = {"req_id": req_id, "proxy_id": pid, "acks": [],
+                                        "deadline": now + float(PROXY_REQ_WAIT)}
+        t = threading.Thread(target=self._safe(self._proxy_req_worker), args=(req_id, pid),
+                             name="proxy-req", daemon=True)
+        t.start()
+        self._threads.append(t)
+        return pid
+
+    def _proxy_req_worker(self, req_id: str, proxy_id: str):
+        rec = self.proxies.get(proxy_id)
+        if not rec:
+            return
+        kind = rec.get("kind")
+        gname = rec.get("gname", "")
+        self._proxy_log(f"「{self.my_name}」发起在线请求：群「{gname}」当前没有其他成员在线，"
+                        f"向局域网内所有在线成员请求文件代理")
+        self._broadcast({
+            "t": "proxy_req", "req_id": req_id, "gid": rec.get("gid"),
+            "gname": gname, "kind": kind,
+            "file": {"id": rec.get("file_id", ""), "name": rec.get("name", ""),
+                     "size": rec.get("size", 0)},
+            "text": rec.get("text", ""), "targets": list(rec.get("targets") or []),
+            "sender_uid": rec.get("sender_uid"), "sender_name": rec.get("sender_name"),
+            "net_id": (self.net or {}).get("nid", ""), "ts": now_ts(),
+        })
+        deadline = now_ts() + float(PROXY_REQ_WAIT)
+        while self._running and now_ts() < deadline:
+            time.sleep(0.1)
+        ctx = self._proxy_wait.pop(req_id, None) or {}
+        acks = list(ctx.get("acks") or [])
+        if not acks:
+            self._proxy_log("局域网内没有其他在线成员可以代存，代理未建立（文件仍保留在本机）")
+            return
+        for a in acks:
+            peer = {"name": a.get("name", "?"), "ip": a.get("ip"),
+                    "tcp_port": int(a.get("port") or 0)}
+            if self._proxy_store_on(peer, rec):
+                mac = str(a.get("mac") or "")
+                if mac and mac not in (rec.get("holders") or []):
+                    rec.setdefault("holders", []).append(mac)
+                self._save_proxies()
+                if kind == "file":
+                    self._proxy_log(f"已向「{peer['name']}」发送文件代理「{rec.get('name')}」"
+                                    f"（临时寄存，用户不可查看）")
+                else:
+                    self._proxy_log(f"已向「{peer['name']}」发送信息代理")
+
+    def _proxy_store_on(self, peer: dict, rec: dict) -> bool:
+        """TCP proxy_store：把代理寄存到在线成员。"""
+        ip = str(peer.get("ip") or "")
+        try:
+            port = int(peer.get("tcp_port") or 0)
+        except Exception:
+            port = 0
+        if not ip or not port:
+            return False
+        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        sock.settimeout(max(float(PROXY_PUSH_TIMEOUT), 10.0) + 60)
+        try:
+            sock.connect((ip, port))
+            send_json(sock, {"cmd": "proxy_store", "proxy_id": rec.get("proxy_id"),
+                             "kind": rec.get("kind"), "gid": rec.get("gid"),
+                             "gname": rec.get("gname", ""), "file_id": rec.get("file_id", ""),
+                             "name": rec.get("name", ""), "size": rec.get("size", 0),
+                             "text": rec.get("text", ""),
+                             "sender_uid": rec.get("sender_uid"),
+                             "sender_name": rec.get("sender_name"),
+                             "targets": list(rec.get("targets") or []),
+                             "ts": rec.get("ts"), "ip": get_local_ips()[0],
+                             "port": self.my_tcp_port()})
+            resp = recv_json(sock)
+            return bool(resp.get("cmd") == "proxy_stored"
+                        and resp.get("proxy_id") == rec.get("proxy_id")
+                        and resp.get("ok") is not False)
+        except Exception:
+            return False
+        finally:
+            try:
+                sock.close()
+            except Exception:
+                pass
+
+    def _proxy_push_to(self, peer: dict, rec: dict) -> bool:
+        """TCP proxy_push：把代理推给对方（群成员 / 原作者 / 扩散副本）。"""
+        ip = str(peer.get("ip") or "")
+        try:
+            port = int(peer.get("tcp_port") or 0)
+        except Exception:
+            port = 0
+        if not ip or not port:
+            return False
+        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        sock.settimeout(max(float(PROXY_PUSH_TIMEOUT), 10.0) + 60)
+        try:
+            sock.connect((ip, port))
+            send_json(sock, {"cmd": "proxy_push", "proxy_id": rec.get("proxy_id"),
+                             "kind": rec.get("kind"), "gid": rec.get("gid"),
+                             "gname": rec.get("gname", ""), "file_id": rec.get("file_id", ""),
+                             "name": rec.get("name", ""), "size": rec.get("size", 0),
+                             "text": rec.get("text", ""),
+                             "sender_uid": rec.get("sender_uid"),
+                             "sender_name": rec.get("sender_name"),
+                             "targets": list(rec.get("targets") or []),
+                             "ts": rec.get("ts"), "ip": get_local_ips()[0],
+                             "port": self.my_tcp_port()})
+            resp = recv_json(sock)
+            return bool(resp.get("cmd") == "proxy_ok"
+                        and resp.get("proxy_id") == rec.get("proxy_id")
+                        and resp.get("ok") is not False)
+        except Exception:
+            return False
+        finally:
+            try:
+                sock.close()
+            except Exception:
+                pass
+
+    def _proxy_fetch_file(self, pusher_ip, pusher_port, pusher_uid, fid, proxy_id,
+                          from_push: bool):
+        """用 cmd=get 从寄存方/推送方拉取代理文件内容；校验 sha256 后返回字节。
+
+        失败返回 None（区分「空文件」与「拉取失败」）。
+        """
+        ip = str(pusher_ip or "")
+        try:
+            port = int(pusher_port or 0)
+        except Exception:
+            port = 0
+        if not ip or not port:
+            p = self.peers.get(str(pusher_uid or "")) or {}
+            ip = ip or str(p.get("ip") or "")
+            port = port or int(p.get("tcp_port") or 0)
+        if not ip or not port or not fid:
+            return None
+        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        sock.settimeout(60)
+        try:
+            sock.connect((ip, port))
+            req = {"cmd": "get", "file_id": fid}
+            if from_push:
+                req["proxy_id"] = proxy_id
+                req["from"] = "push"
+            send_json(sock, req)
+            hdr = recv_json(sock)
+            if hdr.get("cmd") != "data":
+                return None
+            size = int(hdr.get("size") or 0)
+            buf = b""
+            while len(buf) < size:
+                blk = sock.recv(min(FILE_CHUNK, size - len(buf)))
+                if not blk:
+                    break
+                buf += blk
+            if len(buf) != size:
+                return None
+            if hashlib.sha256(buf).hexdigest() != fid:
+                return None
+            return buf
+        except Exception:
+            return None
+        finally:
+            try:
+                sock.close()
+            except Exception:
+                pass
+
+    # ------------------------------------------------------------- 收包 --
+    def _on_proxy_req(self, msg: dict, addr):
+        """收到在线请求：内网成员立即广播应答（自己在线且能提供 TCP）。"""
+        if not self.in_net() or self._tcp_srv is None:
+            return
+        if msg.get("net_id") and str(msg.get("net_id")) != str(self.net.get("nid") or ""):
+            return
+        if not self._member_ok(msg.get("uid")):
+            return
+        req_id = str(msg.get("req_id") or "")
+        if not req_id:
+            return
+        self._broadcast({"t": "proxy_ack", "req_id": req_id, "mac": self.uid,
+                         "ip": get_local_ips()[0], "port": self.my_tcp_port(),
+                         "ts": now_ts()})
+
+    def _on_proxy_ack(self, msg: dict):
+        ctx = self._proxy_wait.get(str(msg.get("req_id") or ""))
+        if not ctx:
+            return
+        mac = str(msg.get("mac") or msg.get("uid") or "")
+        if not mac or mac == self.uid:
+            return
+        if any(a.get("mac") == mac for a in ctx.get("acks") or []):
+            return
+        a = {"mac": mac, "uid": str(msg.get("uid") or ""),
+             "name": str(msg.get("name") or "?"), "ip": str(msg.get("ip") or ""),
+             "port": int(msg.get("port") or 0)}
+        ctx.setdefault("acks", []).append(a)
+        self._proxy_log(f"「{a['name']}」（物理地址 {fmt_mac(mac)}）回复在线")
+
+    def _on_proxy_online(self, msg: dict, addr):
+        """收到上线提醒报文：有地址信息时做上线提醒 + 代理送达。"""
+        uid = str(msg.get("uid") or "")
+        if not uid or uid == self.uid or uid in self._known_online:
+            return
+        if not self.in_net() or not self._member_ok(uid):
+            return
+        if uid not in self.peers:
+            return   # 还没有 presence 里的地址信息，等 presence 到了再提醒/送达
+        groups = [str(g) for g in (msg.get("groups") or [])]
+        self._on_peer_online(uid, str(msg.get("name") or self.peers[uid].get("name", "?")),
+                             groups)
+
+    def _on_peer_online(self, uid: str, name: str, groups: list):
+        """有人新出现 / 重新上线：先写上线提醒日志，再处理本机所有未 consumed 的代理。"""
+        uid = str(uid or "")
+        if not uid or uid == self.uid or uid in self._known_online:
+            return
+        if not self.in_net() or not self._member_ok(uid):
+            return
+        self._known_online.add(uid)
+        text = f"上线提醒：「{name}」（物理地址 {fmt_mac(uid)}）已上线"
+        self._emit_act_log(text, kind="sys")
+        for rec in list(self.proxies.values()):
+            if rec.get("consumed"):
+                continue
+            try:
+                self.proxy_on_peer_online(rec, uid, uid, name, list(groups or []))
+            except Exception:
+                if self._running:
+                    traceback.print_exc()
+
+    def _on_proxy_consumed_msg(self, msg: dict):
+        """t=proxy_consumed：本地有该代理就按 holder 处理（删除 / 保留）。"""
+        if not self._member_ok(msg.get("uid")):
+            return
+        pid = str(msg.get("proxy_id") or "")
+        holder = str(msg.get("holder") or "")
+        if not pid:
+            return
+        if pid in self.proxies:
+            self._proxy_apply_consumed(pid, holder)
+            self._record_proxy_consumed_activity(pid, holder)
+
+    def proxy_on_peer_online(self, proxy: dict, mac: str, uid: str, name: str, groups: list):
+        """某个成员上线时处理一条代理：回传原作者 / 送达目标成员 / 扩散副本。"""
+        pid = str(proxy.get("proxy_id") or "")
+        mac = str(mac or "")
+        if not pid or not mac or mac == self.uid or proxy.get("consumed"):
+            return
+        # 作为群成员出现时补全 targets（判定仍按 mac in targets）
+        if proxy.get("gid") in (groups or []) and mac not in (proxy.get("targets") or []):
+            proxy.setdefault("targets", []).append(mac)
+        peer = self.peers.get(mac) or self.peers.get(str(uid)) or {}
+        peer = {"name": name, "ip": peer.get("ip"), "tcp_port": peer.get("tcp_port")}
+        is_file = proxy.get("kind") == "file"
+        kindname = "文件代理" if is_file else "信息代理"
+        fname = str(proxy.get("name") or proxy.get("text") or "")
+        gname = str(proxy.get("gname") or "")
+
+        if mac == str(proxy.get("sender_uid") or ""):
+            # 1) 回传原作者
+            if not self._proxy_push_to(peer, proxy):
+                return
+            self._broadcast({"t": "proxy_consumed", "proxy_id": pid, "holder": "",
+                             "mac": self.uid, "ts": now_ts()})
+            self._proxy_apply_consumed(pid, "")
+            self._proxy_log(f"原作者「{name}」已上线，已将{kindname}「{fname}」回传并删除本地代理")
+            self._record_proxy_consumed_activity(pid, "")
+            return
+
+        if mac in (proxy.get("targets") or []):
+            # 2) 送达目标成员（接受者成为新的分发源）
+            if not self._proxy_push_to(peer, proxy):
+                return
+            self._proxy_no_target.discard(pid)
+            self._broadcast({"t": "proxy_consumed", "proxy_id": pid, "holder": mac,
+                             "mac": self.uid, "ts": now_ts()})
+            self._proxy_apply_consumed(pid, mac)
+            self._proxy_log(f"群「{gname}」成员「{name}」已上线，"
+                            f"已将{kindname}「{fname}」送达并删除本地代理")
+            self._record_proxy_consumed_activity(pid, mac)
+            return
+
+        # 3) 扩散副本：群成员一直没上线，发给本局域网其他成员一份
+        if (now_ts() - float(proxy.get("created_ts") or 0) >= float(PROXY_GROUP_WAIT)
+                and pid in self._proxy_no_target):
+            if not self._proxy_push_to(peer, proxy):
+                return
+            with self._lock:
+                if mac not in (proxy.get("delivered_to") or []):
+                    proxy.setdefault("delivered_to", []).append(mac)
+                if mac not in (proxy.get("holders") or []):
+                    proxy.setdefault("holders", []).append(mac)
+            self._save_proxies()
+            self._proxy_log(f"群「{gname}」成员一直未上线，"
+                            f"已将{kindname}「{fname}」发送给本局域网成员「{name}」一份")
+
+    # ------------------------------------------------------------- TCP 收包 --
+    def _on_proxy_store(self, req: dict, conn: socket.socket, addr):
+        """TCP cmd=proxy_store：代别人寄存一条代理（kind=file 时立刻把文件拉下来落盘）。"""
+        pid = str(req.get("proxy_id") or "")
+        if not pid:
+            send_json(conn, {"cmd": "proxy_stored", "proxy_id": "", "ok": False,
+                             "err": "缺少 proxy_id"})
+            return
+        kind = str(req.get("kind") or "file")
+        fid = str(req.get("file_id") or "")
+        sender_uid = str(req.get("sender_uid") or "")
+        sender_name = str(req.get("sender_name") or "?")
+        fname = str(req.get("name") or "")
+        ip = req.get("ip") or (addr[0] if addr else "")
+        port = req.get("port") or (self.peers.get(sender_uid) or {}).get("tcp_port")
+        if kind == "file":
+            data = self._proxy_fetch_file(ip, port, sender_uid, fid, pid, from_push=False)
+            if data is None:
+                send_json(conn, {"cmd": "proxy_stored", "proxy_id": pid, "ok": False,
+                                 "err": "拉取代理文件失败"})
+                return
+            try:
+                self.proxy_path(pid).write_bytes(data)
+            except Exception:
+                send_json(conn, {"cmd": "proxy_stored", "proxy_id": pid, "ok": False,
+                                 "err": "写入代理文件失败"})
+                return
+        now = now_ts()
+        rec = {
+            "proxy_id": pid, "kind": kind, "gid": str(req.get("gid") or ""),
+            "gname": str(req.get("gname") or ""), "file_id": fid, "name": fname,
+            "size": int(req.get("size") or 0), "text": str(req.get("text") or ""),
+            "sender_uid": sender_uid, "sender_name": sender_name, "from_mac": sender_uid,
+            "created_ts": float(req.get("ts") or now), "ts": float(req.get("ts") or now),
+            "targets": list(req.get("targets") or []), "delivered_to": [],
+            "holders": [self.uid], "consumed": False, "holder": "",
+        }
+        with self._lock:
+            self.proxies[pid] = rec
+        self._save_proxies()
+        send_json(conn, {"cmd": "proxy_stored", "proxy_id": pid, "ok": True})
+        if kind == "file":
+            self._proxy_log(f"已代「{sender_name}」寄存文件代理「{fname}」"
+                            f"（用户不可查看，后缀已改为 {PROXY_FILE_SUFFIX}）")
+        else:
+            self._proxy_log(f"已代「{sender_name}」寄存信息代理（用户不可查看）")
+
+    def _on_proxy_push(self, req: dict, conn: socket.socket, addr):
+        """TCP cmd=proxy_push：接收代理（kind=file 时从推送方拉取内容）。"""
+        pid = str(req.get("proxy_id") or "")
+        if not pid:
+            send_json(conn, {"cmd": "proxy_ok", "proxy_id": "", "ok": False, "mac": self.uid})
+            return
+        kind = str(req.get("kind") or "file")
+        fid = str(req.get("file_id") or "")
+        sender_uid = str(req.get("sender_uid") or "")
+        sender_name = str(req.get("sender_name") or "?")
+        fname = str(req.get("name") or "")
+        gid = str(req.get("gid") or "")
+        gname = str(req.get("gname") or "")
+        targets = list(req.get("targets") or [])
+        ip = req.get("ip") or (addr[0] if addr else "")
+        port = req.get("port") or (self.peers.get(sender_uid) or {}).get("tcp_port")
+
+        if kind == "file":
+            data = self._proxy_fetch_file(ip, port, sender_uid, fid, pid, from_push=True)
+            if data is None:
+                send_json(conn, {"cmd": "proxy_ok", "proxy_id": pid, "ok": False,
+                                 "err": "拉取代理文件失败", "mac": self.uid})
+                return
+            try:
+                self.proxy_path(pid).write_bytes(data)
+            except Exception:
+                send_json(conn, {"cmd": "proxy_ok", "proxy_id": pid, "ok": False,
+                                 "err": "写入代理文件失败", "mac": self.uid})
+                return
+
+        now = now_ts()
+        # 原作者收到回传：自己本来就有原文件，不保留代理
+        if sender_uid and sender_uid == self.uid:
+            try:
+                self.proxy_path(pid).unlink()
+            except Exception:
+                pass
+            send_json(conn, {"cmd": "proxy_ok", "proxy_id": pid, "ok": True, "mac": self.uid})
+            return
+
+        rec = {
+            "proxy_id": pid, "kind": kind, "gid": gid, "gname": gname, "file_id": fid,
+            "name": fname, "size": int(req.get("size") or 0),
+            "text": str(req.get("text") or ""), "sender_uid": sender_uid,
+            "sender_name": sender_name, "from_mac": sender_uid,
+            "created_ts": float(req.get("ts") or now), "ts": float(req.get("ts") or now),
+            "targets": targets, "delivered_to": [], "holders": [self.uid],
+            "consumed": False, "holder": "",
+        }
+        with self._lock:
+            self.proxies[pid] = rec
+        self._save_proxies()
+        send_json(conn, {"cmd": "proxy_ok", "proxy_id": pid, "ok": True, "mac": self.uid})
+
+        if self.uid in targets:
+            # 最终接受者（群成员本人）：登记进正常文件索引并广播 file_pub
+            if kind == "file" and fid:
+                try:
+                    shutil.copy2(self.proxy_path(pid), self.cache_dir() / fid)
+                except Exception:
+                    traceback.print_exc()
+                self._register_file(fid, {
+                    "name": fname, "size": int(req.get("size") or 0), "ts": now_ts(),
+                    "src_uid": sender_uid, "src_name": sender_name,
+                    "groups": [gid] if gid else [], "has_local": True,
+                })
+                self._broadcast({
+                    "t": "file_pub", "gid": gid, "gname": gname,
+                    "file": {"id": fid, "name": fname, "size": int(req.get("size") or 0)},
+                    "ts": now_ts(), "sender_uid": sender_uid, "sender_name": sender_name,
+                })
+                self._emit("file_new", {"file": self._file_view(fid), "gid": gid,
+                                        "from_self": False})
+                self._proxy_log(f"已收到群「{gname}」的离线文件「{fname}」"
+                                f"（来自设备数据传输代理）")
+            else:
+                self._proxy_log(f"已收到群「{gname}」的离线信息"
+                                f"（来自设备数据传输代理）")
+
+    def _proxy_loop(self):
+        """t=proxy_online：启动后 1 秒广播一次，此后每 PRESENCE_INTERVAL * 4 秒一次。"""
+        time.sleep(1.0)
+        if not self._running:
+            return
+        while self._running:
+            try:
+                if self.in_net():
+                    self._broadcast({"t": "proxy_online", "mac": self.uid,
+                                     "groups": sorted(self.groups), "ts": now_ts()})
+            except Exception:
+                if self._running:
+                    traceback.print_exc()
+            time.sleep(max(1.0, PRESENCE_INTERVAL * 4))
 
     # ========================================================= 内网（准入投票）--
     #   · 登记表记录每个成员的物理地址（MAC）与内网 IP，全网同步
@@ -1979,9 +2951,16 @@ class PeerCore:
                 self.net_apply_join(best["nid"])
             except Exception:
                 traceback.print_exc()
-                self.net_create()
+                self._try_net_create()
         else:
+            self._try_net_create()
+
+    def _try_net_create(self):
+        """自动建立内网；已经在内网里了（例如用户刚在「空设备」对话框点了「是，新建」）就跳过。"""
+        try:
             self.net_create()
+        except Exception:
+            pass
 
     def _net_tick(self):
         now = now_ts()
@@ -2135,6 +3114,22 @@ class PeerCore:
         })
         self.broadcast_log(f"「{self.my_name}」在群「{g['gname']}」发送了文件「{path.name}」")
         self._emit("file_new", {"file": self._file_view(fid), "gid": gid, "from_self": True})
+        # 群内无人在线 -> 启动数据代理（文件先留在本机，等成员上线后自动送达）
+        self._maybe_start_proxy_file(gid, fid, path.name, fsize)
+
+    def _maybe_start_proxy_file(self, gid: str, fid: str, name: str, size: int) -> bool:
+        try:
+            if not self.in_net():
+                return False
+            others = [m for m in self.group_members(gid)
+                      if not m.get("self") and self.is_online(m["uid"])]
+            if others:
+                return False
+            self.start_proxy("file", gid, fid=fid, name=name, size=size)
+            return True
+        except Exception:
+            traceback.print_exc()
+            return False
 
     def _register_file(self, fid: str, rec: dict):
         old = self.index.get(fid, {})
@@ -2409,12 +3404,22 @@ class PeerCore:
             req = recv_json(conn)
             if req.get("cmd") == "get":
                 fid = str(req.get("file_id") or "")
+                proxy_id = str(req.get("proxy_id") or "")
                 cache = self.cache_dir() / fid
+                src = None
                 if fid and cache.is_file():
+                    src = cache
+                elif fid and proxy_id:
+                    # 代理文件：file_id 匹配 proxy.json 且代理文件存在 -> 按同样格式返回数据
+                    rec = self.proxies.get(proxy_id)
+                    p = self.proxy_path(proxy_id)
+                    if rec and str(rec.get("file_id") or "") == fid and p.is_file():
+                        src = p
+                if src is not None:
                     send_json(conn, {"cmd": "data", "file_id": fid,
                                      "name": self.index.get(fid, {}).get("name", ""),
-                                     "size": cache.stat().st_size})
-                    with open(cache, "rb") as f:
+                                     "size": src.stat().st_size})
+                    with open(src, "rb") as f:
                         while True:
                             blk = f.read(FILE_CHUNK)
                             if not blk:
@@ -2429,6 +3434,14 @@ class PeerCore:
                 ok = self._on_secret_deliver(req)
                 send_json(conn, {"cmd": "secret_ack",
                                  "store_id": req.get("store_id", ""), "ok": ok})
+            # ---------------- 局域网活动历史（新功能 A） ----------------
+            elif req.get("cmd") == "act_get":
+                self._on_act_get(req, conn)
+            # ---------------- 设备数据传输代理（新功能 B） ----------------
+            elif req.get("cmd") == "proxy_store":
+                self._on_proxy_store(req, conn, addr)
+            elif req.get("cmd") == "proxy_push":
+                self._on_proxy_push(req, conn, addr)
             else:
                 send_json(conn, {"cmd": "err", "err": "未知命令"})
         except Exception:
@@ -2447,8 +3460,9 @@ class PeerCore:
         - 远程版本号与本地相同、或比本地更旧 -> 静默，无任何反馈；
         - 远程版本更新 -> 发事件，由界面弹窗提醒。
 
-        本方法只负责「检查 + 提醒」；真正的更新（备份会话内容、取回新版本、
-        回填数据）由同目录下的独立程序 neiwang_update.py 完成，主程序不做更新本身。
+        本方法只负责「检查 + 提醒」；真正的更新（备份会话内容、取回新版本、就地覆盖、
+        回填数据、更新更新程序1 自己）由同目录下的双更新程序 neiwang_update1.py /
+        neiwang_update2.py 完成，主程序不做更新本身。
         """
         def work():
             try:
@@ -2658,6 +3672,8 @@ class App:
         self._vote_hide_job = None
 
         self._build_ui()
+        # 空设备启动提示（design_v2 第 3 节）：判定要在自动组网之前做，否则一定「已入网」
+        self._device_empty_at_start = self.core.device_is_empty()
         self.core.start()
         self.core.check_update(manual=False)   # 每次启动自动检查
 
@@ -2665,8 +3681,36 @@ class App:
         self._refresh_peers()
         self._rebuild_file_model_from_index()
         self._update_vote_badge()
+        self._refresh_act_status()
         self.root.after(100, self._poll_events)
+        self.root.after(2500, self._maybe_prompt_empty_device)
         self.root.protocol("WM_DELETE_WINDOW", self._on_close)
+
+    # ------------------------------------------------ 空设备启动提示 --
+    def _maybe_prompt_empty_device(self):
+        """「设备空有程序，没有之前局域网相关数据」-> 弹模态对话框询问是否新建。"""
+        try:
+            if not getattr(self, "_device_empty_at_start", False):
+                return
+            if float(self.core.last_get_ts or 0) > 0:
+                return   # 期间已经向别的设备补齐到局域网活动数据 -> 不弹，走补齐流程
+            EmptyDeviceDialog(self)
+        except Exception:
+            traceback.print_exc()
+
+    def _refresh_act_status(self):
+        """日志页状态条：局域网活动：最后一次数据获取时间 .. · 活动记录 .. 条"""
+        try:
+            v = self.core.activity_view()
+            last = float(v.get("last_get_ts") or 0)
+            if last:
+                text = (f"局域网活动：最后一次数据获取时间 {fmt_time(last)}"
+                        f" · 活动记录 {v.get('count', 0)} 条")
+            else:
+                text = f"局域网活动：暂无活动数据 · 活动记录 {v.get('count', 0)} 条"
+            self.log_act_lbl.configure(text=text)
+        except Exception:
+            pass
 
     # ---------------------------------------------------------------- UI 构建 --
     def _build_ui(self):
@@ -2831,6 +3875,10 @@ class App:
                   activebackground=P.hover, relief="flat", bd=0, cursor="hand2",
                   font=(FAMILY, 9), command=self._clear_log).pack(side="right", padx=14)
         tk.Frame(self.right_log, bg=P.border).pack(fill="x")
+        # 局域网活动状态条（design_v2 第 1.7 节）
+        self.log_act_lbl = tk.Label(self.right_log, text="局域网活动：暂无活动数据 · 活动记录 0 条",
+                                    bg=P.panel, fg=P.sub, font=(FAMILY, 9), anchor="w")
+        self.log_act_lbl.pack(fill="x", padx=18, pady=(6, 2))
         self.log_text = tk.Text(self.right_log, wrap="word", state="disabled",
                                 bg=P.log_bg, font=("Consolas" if OS_IS_WINDOWS else "monospace", 9),
                                 relief="flat", bd=0)
@@ -3453,6 +4501,7 @@ class App:
     def _on_net_changed(self):
         try:
             self._update_vote_badge()
+            self._refresh_act_status()
             if self._nav == "net":
                 self._render_net_page()
             elif self._nav == "vote":
@@ -3787,6 +4836,11 @@ class App:
                         self._render_net_page()
                 elif kind == "net_result":
                     self._on_net_result(ev[1], ev[2])
+                # ---------------- 局域网活动历史（补齐历史后刷新日志页） ----------------
+                elif kind == "act_log":
+                    for line in (ev[1] or []):
+                        self._append_log(str(line))
+                    self._refresh_act_status()
         except queue.Empty:
             pass
         self.root.after(100, self._poll_events)
@@ -3939,7 +4993,7 @@ class App:
     # ---------------------------------------------------------------- 更新检查 --
     def _on_update_result(self, res):
         """自动检查的结果：未联网 / 版本号相同或更旧 -> 什么都不做；
-        只有发现比本地更新的版本才弹窗，点「是」调起独立更新程序。"""
+        只有发现比本地更新的版本才弹窗，点「是」调起更新程序1。"""
         self._manually_check = False
         if self._update_shown:
             return
@@ -3953,9 +5007,10 @@ class App:
             if notes:
                 msg += f"更新内容：\n{notes}\n\n"
             msg += (f"（当前版本 v{local}）\n\n"
-                    f"「是」立即更新：启动同目录下的独立更新程序 {UPDATER_PROGRAM_NAME}，\n"
+                    f"「是」立即更新：启动同目录下的更新程序1 {UPDATER_PROGRAM_NAME}，\n"
                     f"它会先把你的所有会话内容备份到 {CUSTOMER_DATA_DIR} 文件夹，\n"
-                    f"再取回新版本并把你的会话内容接着用；\n"
+                    f"再取回新版本、就地更新全部程序文件并把你的会话内容接着用；\n"
+                    f"它完成后会调起更新程序2 {UPDATER2_PROGRAM_NAME} 更新它自己。\n"
                     f"「否」打开更新页面手动下载；「取消」稍后再说。")
             answer = messagebox.askyesnocancel("发现新版本", msg, parent=self.root)
             if answer is True:
@@ -3971,14 +5026,14 @@ class App:
         # 未联网 / 版本号相同或更旧：无任何反馈（静默），符合需求
 
     def _start_update(self):
-        """调起独立更新程序（更新是单独一个程序，可单独运行；主程序只负责启动它）。"""
+        """调起更新程序1（更新是单独的程序，可单独运行；主程序只负责启动它）。"""
         if self._updating:
             return
         updater = updater_path()
         if not updater.is_file():
             messagebox.showwarning(
                 "找不到更新程序",
-                f"同目录下没有独立更新程序：\n{updater}\n\n"
+                f"同目录下没有更新程序1：\n{updater}\n\n"
                 f"请把 {UPDATER_PROGRAM_NAME} 与本程序放在同一个文件夹里，"
                 f"或直接运行「更新.bat」。",
                 parent=self.root)
@@ -3991,14 +5046,15 @@ class App:
                                    f"{type(e).__name__}: {e}", parent=self.root)
             return
         self._updating = True
-        self._append_log(f"[{fmt_time(now_ts())}] 系统: 已启动独立更新程序 "
+        self._append_log(f"[{fmt_time(now_ts())}] 系统: 已启动更新程序1 "
                          f"{UPDATER_PROGRAM_NAME} --update")
         messagebox.showinfo(
             "已启动更新程序",
-            f"已启动独立更新程序：\n{updater}\n\n"
+            f"已启动更新程序1：\n{updater}\n\n"
             f"请在它弹出的窗口里完成更新（会先把你的会话内容备份到 {CUSTOMER_DATA_DIR}/，\n"
-            f"再把新版本取回并接着用这些会话内容）。\n\n"
-            f"更新完成后关闭本程序，到新版本目录双击「启动.bat」即可。",
+            f"再取回新版本、就地更新全部程序文件并把会话内容接着用）。\n\n"
+            f"更新程序1 完成后会自动调起更新程序2 {UPDATER2_PROGRAM_NAME} 更新它自己；\n"
+            f"更新完成后关闭本程序，重新双击「启动.bat」即可。",
             parent=self.root)
 
     def _on_manual_update(self):
@@ -4210,6 +5266,7 @@ class App:
         else:
             net_txt = "未加入内网（正在扫描）"
         self.status_lbl.configure(text=f"{net_txt} · 在线用户 {len(online)} · v{APP_VERSION}")
+        self._refresh_act_status()
         if self.current_gid:
             self._update_group_header()
         for w in list(self.dm_windows.values()):
@@ -4742,6 +5799,101 @@ class JoinDialog(tk.Toplevel):
         self.app._refresh_groups_list()
         self.app.select_gid(self.app.core.groups[gid.upper()]["gid"])
         self.destroy()
+
+
+# ----------------------------------------------------------------------------
+# 空设备启动提示对话框（design_v2 第 3 节）
+#   标题「内部网」+ 正文「当前没有局域网网络活动，是否新建？」+ 中文按钮文案，
+#   用 tkinter 自定义对话框实现（messagebox 无法自定义中文按钮文字）。
+# ----------------------------------------------------------------------------
+class EmptyDeviceDialog(tk.Toplevel):
+    def __init__(self, app: App):
+        super().__init__(app.root)
+        self.app = app
+        self.title("内部网")
+        self.configure(bg=P.panel)
+        self.resizable(False, False)
+        self.transient(app.root)
+        try:
+            self.attributes("-topmost", True)
+        except Exception:
+            pass
+        try:
+            self.grab_set()
+        except Exception:
+            pass
+
+        body = tk.Frame(self, bg=P.panel, padx=24, pady=20)
+        body.pack(fill="both", expand=True)
+        tk.Label(body, text="当前没有局域网网络活动，是否新建？", bg=P.panel, fg=P.text,
+                 font=(FAMILY, 12, "bold")).pack(anchor="w")
+        tk.Label(body, text="未发现局域网内已有的内网与活动数据，你可以新建一个内网并创建第一个群组。",
+                 bg=P.panel, fg=P.sub, font=(FAMILY, 9), justify="left",
+                 wraplength=380).pack(anchor="w", pady=(10, 16))
+        btns = tk.Frame(body, bg=P.panel)
+        btns.pack(fill="x")
+        tk.Button(btns, text="否，稍后", bg=P.panel, fg=P.sub, activebackground=P.hover,
+                  relief="solid", bd=1, cursor="hand2", font=(FAMILY, 10),
+                  width=10, pady=4, command=self._no).pack(side="right", padx=(8, 0))
+        tk.Button(btns, text="是，新建（推荐）", bg=P.accent, fg="#ffffff",
+                  activebackground=P.accent_hv, activeforeground="#ffffff",
+                  relief="flat", bd=0, cursor="hand2", font=(FAMILY, 10, "bold"),
+                  pady=4, command=self._yes).pack(side="right")
+        self._center(app.root)
+        self.lift()
+        self.focus_set()
+
+    def _center(self, root):
+        self.update_idletasks()
+        w, h = max(420, self.winfo_reqwidth()), max(200, self.winfo_reqheight())
+        x = root.winfo_rootx() + (root.winfo_width() - w) // 2
+        y = root.winfo_rooty() + (root.winfo_height() - h) // 3
+        self.geometry(f"+{max(x, 0)}+{max(y, 0)}")
+
+    # ---------------------------------------------------------------- 是 / 否 --
+    def _yes(self):
+        app = self.app
+        try:
+            self.destroy()
+        except Exception:
+            pass
+        try:
+            if not app.core.in_net():
+                joined = False
+                nearby = app.core.net_nearby_list()
+                if nearby:
+                    try:
+                        app.core.net_apply_join(nearby[0]["nid"])
+                        joined = True
+                    except Exception:
+                        joined = False
+                if not joined:
+                    app.core.net_create()
+            name = str((app.core.net or {}).get("name") or "")
+            text = f"本机没有局域网活动数据，已按用户选择新建内网「{name}」"
+            app._append_log(f"[{fmt_time(now_ts())}] {text}")
+            try:
+                app.core.record_activity("sys", text)
+            except Exception:
+                pass
+            app._on_net_changed()
+            app._refresh_groups_list()
+            CreateGroupDialog(app)
+        except Exception:
+            traceback.print_exc()
+
+    def _no(self):
+        app = self.app
+        try:
+            self.destroy()
+        except Exception:
+            pass
+        text = "当前没有局域网网络活动（未新建）"
+        try:
+            app._append_log(f"[{fmt_time(now_ts())}] {text}")
+            app.core.record_activity("sys", text)
+        except Exception:
+            pass
 
 
 # ----------------------------------------------------------------------------

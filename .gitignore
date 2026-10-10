@@ -1,0 +1,36 @@
+# 用户数据（程序首次运行会自动重建，不要上传到仓库）
+data/
+
+# 测试临时目录
+_testdata/
+_testdata*/
+_run_*.log
+_testdata_shot*/
+_dbg*/
+shot_*.png
+gui*.png
+
+# Python 缓存
+__pycache__/
+*.pyc
+
+# 更新程序产生的运行时目录 / 文件
+customer_god/
+update_clone/
+update_clone.log
+update_package.zip
+_update_unzip/
+_neiwang_update1.pid
+.update_manifest_applied
+*.new.py
+*.new.exe
+
+# C++ 版构建产物与测试临时目录
+cpp/build/
+cpp/build/obj/
+build_tmp/
+*.obj
+_itdata/
+_rootarg/
+_nwtest/
+*_state.json

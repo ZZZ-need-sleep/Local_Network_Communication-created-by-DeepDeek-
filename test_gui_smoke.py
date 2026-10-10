@@ -5,8 +5,10 @@
   1. 主程序 neiwang.py 的更新检查：远程版本更新 -> 提醒；
      版本号相同 / 更旧 / 未联网 -> 完全静默（不弹窗）；
   2. 更新清单解析：纯文本格式、JSON 格式；本地 update.wenyi（版本号来源）；
-  3. 独立更新程序 neiwang_update.py：版本比较、检查的三种状态、
+  3. 双更新程序 neiwang_update1.py / neiwang_update2.py（公共逻辑在 neiwang_update_common.py）：
+     版本比较、检查的三种状态、
      更新三步（备份 data/ -> 取回新版本（ZIP 更新包 / Git）-> 回填到新版本 data/）、
+     就地更新（更新程序1 更新除自己外的全部）、更新程序2 自我更新更新程序1、
      危险 ZIP 拒绝、--check 命令行输出；
   4. 主程序里不再有「旧品牌词」和更新执行代码（更新已拆成独立程序）；
   5. GUI 冒烟：构建主窗口、建群、短暂事件循环后关闭。
@@ -40,7 +42,9 @@ if TESTDATA.exists():
 TESTDATA.mkdir(parents=True, exist_ok=True)
 
 import neiwang as M
-import neiwang_update as U
+import neiwang_update1 as U
+import neiwang_update2 as V
+import neiwang_update_common as C
 
 PASS = []
 
@@ -110,10 +114,10 @@ def make_cfg(port=None):
 # ============================================================ 1) 主程序更新检查 --
 q = queue.Queue()
 core = M.PeerCore(make_cfg(), q, data_root=TESTDATA / "up1")
-Handler.version = "2.0.0"
+Handler.version = "2.0.1"      # 比本地版本（update.wenyi 第一行）更新
 core.check_update()
 ev = wait_event(q, "update")
-ok("远程版本更新 -> 提醒", ev and ev[1].get("found") and ev[1].get("remote") == "2.0.0")
+ok("远程版本更新 -> 提醒", ev and ev[1].get("found") and ev[1].get("remote") == "2.0.1")
 
 q = queue.Queue()
 core2 = M.PeerCore(make_cfg(), q, data_root=TESTDATA / "up2")
@@ -170,7 +174,8 @@ ok("版本比较：更旧不算更新", not M.is_newer_version("0.9", "1.0"))
 # 主程序里已经没有任何旧品牌词 / 更新执行代码
 needle_brand = "mc" + "tier"
 needle_brand2 = "mc" + "tire"
-files = ["neiwang.py", "neiwang_update.py", "test_protocol.py", "test_gui_smoke.py",
+files = ["neiwang.py", "neiwang_update1.py", "neiwang_update2.py",
+         "neiwang_update_common.py", "test_protocol.py", "test_gui_smoke.py",
          "启动.bat", "更新.bat", "update.wenyi", "README.md", ".gitignore"]
 bad = []
 for name in files:
@@ -184,8 +189,26 @@ for name in files:
 ok("程序/文档里已无旧品牌词", not bad, "、".join(bad))
 ok("主程序里已无更新执行代码（已拆成独立更新程序）",
    not hasattr(M.PeerCore, "clone_update") and not hasattr(M, "restore_customer_data"))
-ok("独立更新程序存在且可被主程序定位",
-   U.__file__ and M.updater_path().is_file() and M.updater_path().name == "neiwang_update.py")
+ok("更新程序1 存在且可被主程序定位（双更新程序）",
+   U.__file__ and M.updater_path().is_file() and M.updater_path().name == "neiwang_update1.py",
+   M.updater_path().name)
+ok("更新程序2 存在", V.__file__ and (ROOT / "neiwang_update2.py").is_file())
+ok("公共逻辑模块存在（两个入口可独立双击运行）",
+   (ROOT / "neiwang_update_common.py").is_file())
+
+
+def run_script(script, *args, env=None):
+    p = subprocess.run([sys.executable, "-B", str(ROOT / script), *args], cwd=str(ROOT),
+                       env=env or dict(os.environ), capture_output=True, text=True,
+                       timeout=60)
+    return ((p.stdout or "") + (p.stderr or "")).strip()
+
+
+out2 = run_script("neiwang_update2.py", "--check")
+_ok2 = bool(out2.splitlines()) and (out2.splitlines()[0].startswith("OFFLINE")
+                                    or out2.splitlines()[0].startswith("UP_TO_DATE")
+                                    or out2.splitlines()[0].startswith("UPDATE_AVAILABLE"))
+ok("更新程序2 --check 打印单行结果（不崩）", _ok2, out2[:120])
 
 
 # 命令行参数 -> 运行模式（主程序点「是」时用的就是 --update）
@@ -245,7 +268,9 @@ os.environ["NEIWANG_DATA_DIR"] = str(src_data)
 Handler.zip_bytes = build_zip({
     "内部网-main/neiwang.py": "# 新版本代码\n",
     "内部网-main/update.wenyi": "9.9.9\n- 全新版本\n",
-    "内部网-main/neiwang_update.py": "# 新版更新程序\n",
+    "内部网-main/neiwang_update1.py": "# 新版更新程序1\n",
+    "内部网-main/neiwang_update2.py": "# 新版更新程序2\n",
+    "内部网-main/neiwang_update_common.py": "# 新版公共逻辑\n",
 })
 logs = []
 res_zip = U.perform_update({"update_repo": "", "update_package": f"http://127.0.0.1:{PORT}/pkg.zip"},
@@ -257,7 +282,7 @@ ok("ZIP 更新：会话内容已备份到 customer_god/",
    and (upd_root / "customer_god" / "downloads" / "作业.txt").is_file())
 ok("ZIP 更新：新版本代码已就位",
    (upd_root / "update_clone" / "neiwang.py").is_file()
-   and (upd_root / "update_clone" / "neiwang_update.py").is_file())
+   and (upd_root / "update_clone" / "neiwang_update1.py").is_file())
 ok("ZIP 更新：会话内容已回填到新版本 data/",
    (upd_root / "update_clone" / "data" / "config.json").is_file()
    and (upd_root / "update_clone" / "data" / "downloads" / "作业.txt")
@@ -268,7 +293,7 @@ ok("ZIP 更新：进度日志有输出", any("备份" in s for s in logs) and an
 upd_root_logic = TESTDATA / "upd_logic"
 upd_root_logic.mkdir(parents=True, exist_ok=True)
 os.environ["NEIWANG_UPDATE_ROOT"] = str(upd_root_logic)
-real_have_git, real_run_git = U.have_git, U.run_git_clone
+real_have_git, real_run_git = C.have_git, C.run_git_clone
 
 
 def fake_git_factory(ok_flag, create_main=True):
@@ -283,7 +308,7 @@ def fake_git_factory(ok_flag, create_main=True):
 try:
     # a) 没装 Git + 配了 ZIP 包 -> 自动走 ZIP
     shutil.rmtree(upd_root_logic / "update_clone", ignore_errors=True)
-    U.have_git = lambda: False
+    C.have_git = lambda: False
     r = U.fetch_new_version({"update_repo": "https://example.com/a.git",
                              "update_package": f"http://127.0.0.1:{PORT}/pkg.zip"},
                             upd_root_logic / "update_clone", log=lambda s: None)
@@ -292,8 +317,8 @@ try:
 
     # b) 有 Git 且克隆成功 -> 走 Git
     shutil.rmtree(upd_root_logic / "update_clone", ignore_errors=True)
-    U.have_git = lambda: True
-    U.run_git_clone = fake_git_factory(True)
+    C.have_git = lambda: True
+    C.run_git_clone = fake_git_factory(True)
     r = U.fetch_new_version({"update_repo": "https://example.com/a.git", "update_package": ""},
                             upd_root_logic / "update_clone", log=lambda s: None)
     ok("有 Git 时优先用 Git 方式", r.get("ok") and r.get("method") == "git",
@@ -301,14 +326,14 @@ try:
 
     # c) Git 失败 + 配了 ZIP 包 -> 自动回退到 ZIP
     shutil.rmtree(upd_root_logic / "update_clone", ignore_errors=True)
-    U.run_git_clone = fake_git_factory(False)
+    C.run_git_clone = fake_git_factory(False)
     r = U.fetch_new_version({"update_repo": "https://example.com/a.git",
                              "update_package": f"http://127.0.0.1:{PORT}/pkg.zip"},
                             upd_root_logic / "update_clone", log=lambda s: None)
     ok("Git 失败时自动回退到 ZIP 更新包", r.get("ok") and r.get("method") == "zip",
        str(r.get("reason", ""))[:150])
 finally:
-    U.have_git, U.run_git_clone = real_have_git, real_run_git
+    C.have_git, C.run_git_clone = real_have_git, real_run_git
 
 # 真机 Git 端到端（受限环境 / 沙箱里 git clone 可能不可用，此时记 SKIP）
 if real_have_git():
@@ -318,7 +343,7 @@ if real_have_git():
     fake_repo = TESTDATA / "fake_repo"
     fake_repo.mkdir(parents=True, exist_ok=True)
     (fake_repo / "neiwang.py").write_text("# 新版本代码\n", encoding="utf-8")
-    (fake_repo / "neiwang_update.py").write_text("# 新版更新程序\n", encoding="utf-8")
+    (fake_repo / "neiwang_update1.py").write_text("# 新版更新程序1\n", encoding="utf-8")
     (fake_repo / "update.wenyi").write_text("9.9.9\n- 全新版本\n", encoding="utf-8")
 
     def git(*a):
@@ -368,12 +393,13 @@ cli_dir.mkdir(parents=True, exist_ok=True)
 cli_env = dict(os.environ)
 cli_env["NEIWANG_DATA_DIR"] = str(cli_dir)
 cli_env["PYTHONDONTWRITEBYTECODE"] = "1"
-UPDATER = str(ROOT / "neiwang_update.py")
+UPDATER = str(ROOT / "neiwang_update1.py")
+UPDATER2 = str(ROOT / "neiwang_update2.py")
 
 
-def run_check(update_url: str) -> str:
+def run_check(update_url: str, script: str = None) -> str:
     (cli_dir / "config.json").write_text(json.dumps({"update_url": update_url}), encoding="utf-8")
-    p = subprocess.run([sys.executable, "-B", UPDATER, "--check"], cwd=str(ROOT),
+    p = subprocess.run([sys.executable, "-B", script or UPDATER, "--check"], cwd=str(ROOT),
                        env=cli_env, capture_output=True, text=True, timeout=60)
     return ((p.stdout or "") + (p.stderr or "")).strip()
 
@@ -387,8 +413,82 @@ try:
     ok("--check：版本相同 -> UP_TO_DATE", "UP_TO_DATE" in out, out[:120])
     out = run_check("http://127.0.0.1:1/none")
     ok("--check：连不上 -> OFFLINE", "OFFLINE" in out, out[:120])
+    Handler.version = "9.9.9"
+    out = run_check(MANIFEST_URL, UPDATER2)
+    ok("更新程序2 --check 同样单行输出（两个更新程序参数一致）",
+       out.strip().startswith("UPDATE_AVAILABLE"), out[:120])
 except Exception as e:
     ok("--check 命令行可用", False, repr(e))
+
+# ------------------------------------------- 3.5) 双更新程序：就地更新 / 更新程序1 自己 --
+# 第四步：就地更新全部（除 data/、customer_god/、update_clone/ 与更新程序1 自己以外）
+ip_clone = TESTDATA / "ip_clone"
+ip_root = TESTDATA / "ip_root"
+if ip_root.exists():
+    shutil.rmtree(ip_root, ignore_errors=True)
+if ip_clone.exists():
+    shutil.rmtree(ip_clone, ignore_errors=True)
+(ip_clone / "docs").mkdir(parents=True, exist_ok=True)
+(ip_clone / "sub").mkdir(parents=True, exist_ok=True)
+(ip_clone / "data").mkdir(parents=True, exist_ok=True)
+(ip_clone / "neiwang.py").write_text("# new main\n", encoding="utf-8")
+(ip_clone / "sub" / "helper.py").write_text("# new helper\n", encoding="utf-8")
+(ip_clone / "update.wenyi").write_text("9.9.9\n- x\n", encoding="utf-8")
+(ip_clone / "docs" / "design_v2.md").write_text("# new doc\n", encoding="utf-8")
+(ip_clone / "data" / "config.json").write_text("{}", encoding="utf-8")
+(ip_clone / "neiwang_update1.py").write_text("# new updater1\n", encoding="utf-8")
+(ip_clone / "neiwang_update2.py").write_text("# new updater2\n", encoding="utf-8")
+(ip_root / "docs").mkdir(parents=True, exist_ok=True)
+(ip_root / "data").mkdir(parents=True, exist_ok=True)
+(ip_root / "neiwang.py").write_text("# old main\n", encoding="utf-8")
+(ip_root / "neiwang_update1.py").write_text("# old updater1\n", encoding="utf-8")
+(ip_root / "old_module.py").write_text("# 旧版才有的模块\n", encoding="utf-8")
+(ip_root / "docs" / "old.md").write_text("# 旧文档\n", encoding="utf-8")
+(ip_root / "notes.txt").write_text("不是程序文件\n", encoding="utf-8")
+(ip_root / "data" / "config.json").write_text('{"keep": 1}', encoding="utf-8")
+ip_res = U.inplace_update(ip_clone, ip_root, log=lambda s: None)
+ok("就地更新：整体成功", ip_res.get("ok") is True, str(ip_res)[:200])
+ok("就地更新：程序文件已覆盖",
+   (ip_root / "neiwang.py").read_text(encoding="utf-8") == "# new main\n"
+   and (ip_root / "sub" / "helper.py").is_file())
+ok("就地更新：data/ 不动（本机数据保留）",
+   (ip_root / "data" / "config.json").read_text(encoding="utf-8") == '{"keep": 1}'
+   and not (ip_root / "data" / "config.json").read_text(encoding="utf-8").startswith("{}"))
+ok("就地更新：更新程序1 自己不覆盖（留给更新程序2）",
+   (ip_root / "neiwang_update1.py").read_text(encoding="utf-8") == "# old updater1\n")
+ok("就地更新：删除 update_clone 中已不存在的程序文件",
+   not (ip_root / "old_module.py").exists())
+ok("就地更新：docs/ 下的旧 .md 不删除（白名单排除 docs/）",
+   (ip_root / "docs" / "old.md").is_file())
+ok("就地更新：非程序文件不删除",
+   (ip_root / "notes.txt").is_file())
+ok("就地更新：目录列表里有删除记录", int(ip_res.get("removed") or 0) >= 1, ip_res)
+ok("就地更新：程序目录里的 update.wenyi 被更新",
+   (ip_root / "update.wenyi").read_text(encoding="utf-8").startswith("9.9.9"))
+
+# 第五步：更新程序2 只做一件事 —— 把 update_clone/neiwang_update1.* 覆盖到程序目录
+u2_root = TESTDATA / "u2_root"
+u2_prog = TESTDATA / "u2_prog"
+shutil.rmtree(u2_root, ignore_errors=True)
+shutil.rmtree(u2_prog, ignore_errors=True)
+(u2_root / "update_clone").mkdir(parents=True, exist_ok=True)
+u2_prog.mkdir(parents=True, exist_ok=True)
+(u2_root / "update_clone" / "neiwang_update1.py").write_text("# patched updater1\n",
+                                                              encoding="utf-8")
+(u2_root / "update_clone" / "update.wenyi").write_text("9.9.9\n- x\n", encoding="utf-8")
+(u2_prog / "neiwang_update1.py").write_text("# running updater1\n", encoding="utf-8")
+patch_res = V.patch_updater1(log=lambda s: None, program_dir=u2_prog, root=u2_root)
+ok("更新程序2：覆盖更新程序1 成功", patch_res.get("ok") is True, str(patch_res)[:200])
+ok("更新程序2：程序目录里的更新程序1 已替换",
+   (u2_prog / "neiwang_update1.py").read_text(encoding="utf-8") == "# patched updater1\n")
+ok("更新程序2：完成日志写进 update_clone.log",
+   "更新程序1 已由更新程序2 更新到 v9.9.9"
+   in (u2_root / "update_clone.log").read_text(encoding="utf-8"))
+patch_res2 = V.patch_updater1(log=lambda s: None, program_dir=u2_prog,
+                              root=TESTDATA / "u2_none")
+ok("更新程序2：update_clone 里没有更新程序1 时明确报错",
+   patch_res2.get("ok") is False and "更新程序1" in str(patch_res2.get("reason")),
+   str(patch_res2)[:160])
 
 srv.shutdown()
 
