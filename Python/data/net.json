@@ -1,0 +1,21 @@
+{
+ "net": {
+  "nid": "313D71",
+  "name": "USER-20250124ZP 的内网",
+  "founder_mac": "UID-A",
+  "created_ts": 1791645566.3711734
+ },
+ "members": [
+  {
+   "mac": "UID-A",
+   "name": "AAA改",
+   "ip": "192.168.2.3",
+   "tcp_port": 45631,
+   "joined_ts": 1791645566.3716831,
+   "founder": true
+  }
+ ],
+ "reqs": [],
+ "my_votes": {},
+ "applying": null
+}
